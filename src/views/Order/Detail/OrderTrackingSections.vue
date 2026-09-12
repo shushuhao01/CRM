@@ -114,16 +114,20 @@
     <el-card class="after-sales-card">
       <template #header>
         <div class="card-header">
-          <el-icon><Service /></el-icon>
-          <span>售后历史轨迹</span>
-          <el-button
-            size="small"
-            type="text"
-            @click="afterSalesCollapsedLocal = !afterSalesCollapsedLocal"
-            :icon="afterSalesCollapsedLocal ? ArrowDown : ArrowUp"
-          >
-            {{ afterSalesCollapsedLocal ? '展开' : '收起' }}
-          </el-button>
+          <div class="card-header-left">
+            <el-icon><Service /></el-icon>
+            <span>售后历史轨迹</span>
+          </div>
+          <div class="card-header-right">
+            <el-button
+              size="small"
+              type="text"
+              @click="afterSalesCollapsedLocal = !afterSalesCollapsedLocal"
+              :icon="afterSalesCollapsedLocal ? ArrowDown : ArrowUp"
+            >
+              {{ afterSalesCollapsedLocal ? '展开' : '收起' }}
+            </el-button>
+          </div>
         </div>
       </template>
 
@@ -231,8 +235,25 @@ const getActionTagType = (actionType: string) => {
     'submit_audit': 'info',
     'audit_approve': 'success',
     'audit_reject': 'danger',
+    'cancel_request': 'warning',
     'cancel_approve': 'danger',
-    'cancel_reject': 'warning'
+    'cancel_reject': 'warning',
+    'auto_transfer': 'info',
+    'auto_sync': 'info',
+    'after_sales_created': 'warning',
+    'cod_amount_change': 'warning',
+    'cod_returned': 'danger',
+    'cod_cancelled': 'info',
+    'cod_cancel_rejected': 'warning',
+    'ship': 'primary',
+    'delivered': 'success',
+    'rejected': 'danger',
+    'package_exception': 'danger',
+    'abnormal': 'danger',
+    'logistics_returned': 'warning',
+    'logistics_cancelled': 'info',
+    'virtual_delivery': 'primary',
+    'status_change': 'info'
   }
   return map[actionType] || 'info'
 }
@@ -244,8 +265,25 @@ const getActionTagLabel = (actionType: string) => {
     'submit_audit': '提审',
     'audit_approve': '审核通过',
     'audit_reject': '审核拒绝',
+    'cancel_request': '取消申请',
     'cancel_approve': '取消通过',
-    'cancel_reject': '取消拒绝'
+    'cancel_reject': '取消拒绝',
+    'auto_transfer': '自动流转',
+    'auto_sync': '物流同步',
+    'after_sales_created': '创建售后',
+    'cod_amount_change': '代收变更',
+    'cod_returned': '代收退回',
+    'cod_cancelled': '代收取消',
+    'cod_cancel_rejected': '取消代收被拒',
+    'ship': '发货',
+    'delivered': '签收',
+    'rejected': '拒收',
+    'package_exception': '包裹异常',
+    'abnormal': '状态异常',
+    'logistics_returned': '物流退回',
+    'logistics_cancelled': '物流取消',
+    'virtual_delivery': '虚拟发货',
+    'status_change': '状态变更'
   }
   return map[actionType] || actionType
 }

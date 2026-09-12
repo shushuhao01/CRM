@@ -13,6 +13,7 @@ import { TenantContextManager } from '../utils/tenantContext';
 import { formatDateTime } from '../utils/dateFormat';
 import { log as logger } from '../config/logger';
 import { writeOperationLog, extractUserInfo } from '../utils/operationLogWriter';
+import { saveStatusHistory } from './orders/orderHelpers';
 // import { Like, In } from 'typeorm'; // 暂时未使用
 
 const router = Router();
@@ -477,6 +478,28 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
         description: `创建售后单 ${savedService.serviceNumber}（${savedService.serviceType}），客户：${savedService.customerName || '未知'}`,
         ...serviceUserInfo,
       });
+
+      // 🔥 同步写入订单状态轨迹，使「订单状态和轨迹」卡片显示售后节点
+      try {
+        const orderRepository = getTenantRepo(Order);
+        const relatedOrder = await orderRepository.findOne({ where: { id: savedService.orderId } });
+        if (relatedOrder) {
+          const SERVICE_TYPE_CN: Record<string, string> = {
+            return: '退货', exchange: '换货', repair: '维修', refund: '退款',
+          };
+          const typeCn = SERVICE_TYPE_CN[savedService.serviceType as string] || '售后';
+          await saveStatusHistory(
+            relatedOrder.id,
+            relatedOrder.status,
+            serviceUserInfo.userId || null,
+            serviceUserInfo.username || '系统',
+            `创建${typeCn}售后单 ${savedService.serviceNumber}`,
+            { actionType: 'after_sales_created' }
+          );
+        }
+      } catch (historyErr: any) {
+        logger.warn('[Services] 写入订单状态轨迹失败:', historyErr?.message);
+      }
     }
 
     // 🔥 发送售后创建通知给创建者和管理员

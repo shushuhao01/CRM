@@ -684,16 +684,25 @@ const generateTimelineFromStatus = () => {
     'draft': 0,
     'pending_audit': 1,
     'audit_rejected': 1,
+    'pending_cancel': 2,
+    'cancel_failed': 2,
     'pending_shipment': 2,
     'approved': 2,
     'shipped': 3,
     'in_transit': 3,
     'out_for_delivery': 3,
+    'rejected': 3,
+    'rejected_returned': 3,
+    'logistics_returned': 3,
+    'logistics_cancelled': 3,
+    'package_exception': 3,
+    'abnormal': 3,
     'delivered': 4,
     'signed': 4,
     'completed': 4,
-    'cancelled': -1,
-    'rejected': -1
+    'refunded': 4,
+    'closed': 4,
+    'cancelled': 0
   }
 
   const currentPriority = statusPriority[currentStatus] ?? 0
@@ -738,25 +747,30 @@ const generateTimelineFromStatus = () => {
     }
   }
 
-  // 如果是特殊状态（取消、拒绝等），添加对应的轨迹
-  if (currentStatus === 'cancelled') {
+  // 如果是特殊状态（取消、拒收、异常、退回等），追加对应的轨迹节点
+  const specialStatusNode: Record<string, { title: string; description: string; icon: any; color: string }> = {
+    cancelled: { title: '订单取消', description: '订单已取消', icon: Close, color: '#F56C6C' },
+    audit_rejected: { title: '审核拒绝', description: orderDetail.auditRemark || '订单审核被拒绝', icon: Close, color: '#F56C6C' },
+    pending_cancel: { title: '取消申请', description: '已提交取消申请，等待审核', icon: Clock, color: '#E6A23C' },
+    cancel_failed: { title: '取消被拒', description: '取消申请被拒绝', icon: Warning, color: '#F56C6C' },
+    rejected: { title: '拒收', description: '客户拒收包裹', icon: Warning, color: '#F56C6C' },
+    rejected_returned: { title: '拒收已退回', description: '拒收包裹已退回', icon: Warning, color: '#F56C6C' },
+    logistics_returned: { title: '物流退回', description: '包裹已由物流退回', icon: Warning, color: '#E6A23C' },
+    logistics_cancelled: { title: '物流取消', description: '物流已取消发货', icon: Close, color: '#909399' },
+    package_exception: { title: '包裹异常', description: '包裹出现异常，待处理', icon: Warning, color: '#F56C6C' },
+    abnormal: { title: '状态异常', description: '订单状态异常，待处理', icon: Warning, color: '#F56C6C' },
+    refunded: { title: '已退款', description: '订单已退款', icon: Money, color: '#67C23A' },
+    closed: { title: '已关闭', description: '订单已关闭', icon: Close, color: '#909399' }
+  }
+  const special = specialStatusNode[currentStatus]
+  if (special) {
     timeline.push({
       timestamp: orderDetail.updateTime || new Date().toISOString(),
-      type: 'danger',
-      icon: Close,
-      color: '#F56C6C',
-      title: '订单取消',
-      description: '订单已取消',
-      operator: orderDetail.operator || creatorName
-    })
-  } else if (currentStatus === 'audit_rejected') {
-    timeline.push({
-      timestamp: orderDetail.updateTime || new Date().toISOString(),
-      type: 'danger',
-      icon: Close,
-      color: '#F56C6C',
-      title: '审核拒绝',
-      description: orderDetail.auditRemark || '订单审核被拒绝',
+      type: getTimelineType(currentStatus),
+      icon: special.icon,
+      color: special.color,
+      title: special.title,
+      description: special.description,
       operator: orderDetail.operator || creatorName
     })
   }
@@ -766,16 +780,33 @@ const generateTimelineFromStatus = () => {
 
 // 获取时间轴类型
 const getTimelineType = (status: string) => {
-  const types = {
+  const types: Record<string, string> = {
+    'draft': 'info',
     'pending': 'info',
+    'pending_transfer': 'info',
+    'pending_audit': 'warning',
     'pending_approval': 'warning',
-    'approved': 'success',
-    'rejected': 'danger',
     'pending_shipment': 'warning',
+    'pending_cancel': 'warning',
+    'approved': 'success',
+    'confirmed': 'info',
+    'paid': 'success',
+    'rejected': 'danger',
+    'audit_rejected': 'danger',
+    'cancel_failed': 'danger',
+    'logistics_returned': 'warning',
+    'logistics_cancelled': 'info',
+    'package_exception': 'danger',
+    'abnormal': 'danger',
+    'rejected_returned': 'danger',
     'shipped': 'primary',
+    'in_transit': 'primary',
+    'out_for_delivery': 'primary',
+    'virtual_delivery': 'primary',
     'delivered': 'success',
     'signed': 'success',
     'completed': 'success',
+    'after_sales_created': 'warning',
     'cancelled': 'danger'
   }
   return types[status] || 'info'
@@ -783,16 +814,33 @@ const getTimelineType = (status: string) => {
 
 // 获取时间轴图标
 const getTimelineIcon = (status: string) => {
-  const icons = {
+  const icons: Record<string, any> = {
+    'draft': Clock,
     'pending': Clock,
+    'pending_transfer': Clock,
+    'pending_audit': Clock,
     'pending_approval': Clock,
-    'approved': Check,
-    'rejected': Close,
     'pending_shipment': Clock,
+    'pending_cancel': Clock,
+    'approved': Check,
+    'confirmed': Check,
+    'paid': Money,
+    'rejected': Warning,
+    'audit_rejected': Close,
+    'cancel_failed': Warning,
+    'logistics_returned': Warning,
+    'logistics_cancelled': Close,
+    'package_exception': Warning,
+    'abnormal': Warning,
+    'rejected_returned': Warning,
     'shipped': Van,
+    'in_transit': Van,
+    'out_for_delivery': Van,
+    'virtual_delivery': Box,
     'delivered': Check,
     'signed': Check,
     'completed': Check,
+    'after_sales_created': Service,
     'cancelled': Close
   }
   return icons[status] || Clock
@@ -800,19 +848,35 @@ const getTimelineIcon = (status: string) => {
 
 // 获取时间轴颜色
 const getTimelineColor = (status: string) => {
-  const colors = {
+  const colors: Record<string, string> = {
+    'draft': '#909399',
     'pending': '#909399',
+    'pending_transfer': '#909399',
+    'pending_audit': '#e6a23c',
     'pending_approval': '#e6a23c',
-    'approved': '#67c23a',
-    'rejected': '#f56c6c',
     'pending_shipment': '#e6a23c',
+    'pending_cancel': '#e6a23c',
+    'approved': '#67c23a',
+    'confirmed': '#409eff',
+    'paid': '#67c23a',
+    'rejected': '#f56c6c',
+    'audit_rejected': '#f56c6c',
+    'cancel_failed': '#f56c6c',
+    'logistics_returned': '#e6a23c',
+    'logistics_cancelled': '#909399',
+    'package_exception': '#f56c6c',
+    'abnormal': '#f56c6c',
+    'rejected_returned': '#f56c6c',
     'shipped': '#409eff',
+    'in_transit': '#409eff',
+    'out_for_delivery': '#409eff',
+    'virtual_delivery': '#409eff',
     'delivered': '#67c23a',
     'signed': '#67c23a',
     'completed': '#67c23a',
+    'after_sales_created': '#e6a23c',
     'cancelled': '#f56c6c',
-    'edit': '#e6a23c',
-    'audit_rejected': '#f56c6c'
+    'edit': '#e6a23c'
   }
   return colors[status] || '#909399'
 }
@@ -1741,21 +1805,35 @@ const getMarkTagType = (markType: string) => {
 // 获取订单状态文本
 const getStatusText = (status: string) => {
   const texts: Record<string, string> = {
+    draft: '草稿',
+    pending: '待确认',
     pending_transfer: '待流转',
     pending_audit: '待审核',
-    audit_rejected: '审核拒绝',
+    pending_approval: '待审核',
     pending_shipment: '待发货',
+    pending_cancel: '待取消',
+    approved: '已审核',
+    confirmed: '已确认',
+    paid: '已支付',
     shipped: '已发货',
+    in_transit: '运输中',
+    out_for_delivery: '派送中',
     delivered: '已签收',
     signed: '已签收',
     completed: '已完成',
+    cancelled: '已取消',
+    refunded: '已退款',
+    closed: '已关闭',
+    audit_rejected: '审核拒绝',
+    cancel_failed: '取消被拒',
     package_exception: '包裹异常',
+    abnormal: '状态异常',
     rejected: '拒收',
     rejected_returned: '拒收已退回',
+    logistics_returned: '物流退回',
+    logistics_cancelled: '物流取消',
     after_sales_created: '已建售后',
-    cancelled: '已取消',
-    pending_cancel: '待取消',
-    draft: '草稿'
+    virtual_delivery: '虚拟发货'
   }
   return texts[status] || status
 }
@@ -1940,19 +2018,52 @@ const loadMoreOrderLogs = async () => {
 
 const getOrderLogTimelineType = (logType: string): string => {
   const map: Record<string, string> = {
-    create: 'success', edit: 'warning', approve: 'success', reject: 'danger',
-    status_change: 'primary', ship: 'success', cancel: 'danger', assign: 'warning',
-    auto_sync: 'info', manual_sync: 'info', submit_audit: 'info',
+    // 基础操作
+    create: 'success', edit: 'warning', assign: 'warning', delete: 'danger',
+    batch_update: 'warning',
+    // 审核 / 取消审核
+    approve: 'success', reject: 'danger', audit_approve: 'success', audit_reject: 'danger',
+    submit_audit: 'info', cancel_request: 'warning',
+    cancel_approve: 'success', cancel_reject: 'danger',
+    cancel_approved: 'success', cancel_rejected: 'danger',
+    // 状态流转
+    status_change: 'primary', transfer: 'primary', auto_transfer: 'primary',
+    ship: 'success', delivered: 'success', rejected: 'danger', cancelled: 'info',
+    logistics_returned: 'warning', logistics_cancelled: 'info',
+    package_exception: 'danger', abnormal: 'danger',
+    after_sales_created: 'warning', virtual_delivery: 'success',
+    // 同步
+    auto_sync: 'info', manual_sync: 'info',
+    // 代收
+    cod_amount_change: 'warning', cod_returned: 'success', cod_cancelled: 'info',
+    cod_cancel_rejected: 'danger',
+    // 兼容旧 action
+    cancel: 'danger',
   }
   return map[logType] || 'info'
 }
 
 const getOrderLogTypeText = (logType: string): string => {
   const map: Record<string, string> = {
-    create: '创建', edit: '编辑', approve: '审核通过', reject: '审核拒绝',
-    status_change: '状态变更', ship: '发货', cancel: '取消', assign: '分配',
-    auto_sync: '自动同步', manual_sync: '手动同步', submit_audit: '提交审核',
-    batch_update: '批量更新', delete: '删除',
+    // 基础操作
+    create: '创建', edit: '编辑', assign: '分配', delete: '删除', batch_update: '批量更新',
+    // 审核 / 取消审核
+    approve: '审核通过', reject: '审核拒绝',
+    audit_approve: '审核通过', audit_reject: '审核拒绝',
+    submit_audit: '提交审核', cancel_request: '取消申请',
+    cancel_approve: '取消通过', cancel_reject: '取消拒绝',
+    cancel_approved: '取消通过', cancel_rejected: '取消拒绝',
+    // 状态流转
+    status_change: '状态变更', transfer: '订单流转', auto_transfer: '订单流转',
+    ship: '发货', delivered: '签收', rejected: '拒收', cancelled: '取消', cancel: '取消',
+    logistics_returned: '物流退回', logistics_cancelled: '物流取消',
+    package_exception: '包裹异常', abnormal: '状态异常',
+    after_sales_created: '已建售后', virtual_delivery: '虚拟发货',
+    // 同步
+    auto_sync: '自动同步', manual_sync: '手动同步',
+    // 代收
+    cod_amount_change: '代收变更', cod_returned: '代收返款', cod_cancelled: '取消代收',
+    cod_cancel_rejected: '取消代收驳回',
   }
   return map[logType] || logType
 }

@@ -427,7 +427,7 @@ router.get('/:id/status-history', async (req: Request, res: Response) => {
         orderId: item.orderId,
         status: item.status,
         title: getActionTypeTitle(item.actionType, item.status),
-        description: item.notes || `订单状态变更为「${getStatusTitle(item.status)}`,
+        description: item.notes || `订单状态变更为「${getStatusTitle(item.status)}」`,
         operator: item.operatorName || '系统',
         operatorDepartment: item.operatorDepartment || '',
         operatorId: item.operatorId,
@@ -580,8 +580,22 @@ router.put('/:id/mark-type', async (req: Request, res: Response) => {
       });
     }
 
+    const previousMarkType = order.markType;
+    const isMarkTypeChanged = String(previousMarkType || '') !== String(markType || '');
     order.markType = markType;
     await orderRepository.save(order);
+
+    // 🔥 写入订单时间线日志（订单标记变更）——旧值未变化时不记录，避免误记录
+    if (isMarkTypeChanged) {
+      writeOperationLog({
+        module: 'order',
+        resourceType: 'order',
+        resourceId: order.id,
+        action: 'edit',
+        description: `订单标记: "${translateMarkType(previousMarkType)}" → "${translateMarkType(markType)}"`,
+        ...extractUserInfo(req),
+      });
+    }
 
     log.info(`✅ [订单标记] 订单 ${orderId} 标记更新成功`);
 
@@ -1262,27 +1276,19 @@ const isValidStatusTransition = (currentStatus: string, targetStatus: string): b
   return allowedTargets.includes(targetStatus);
 };
 
-// 🔥 获取状态中文名称
-const getStatusName = (status: string): string => {
-  const statusNames: Record<string, string> = {
-    'pending_transfer': '待流转',
-    'pending_audit': '待审核',
-    'audit_rejected': '审核拒绝',
-    'pending_shipment': '待发货',
-    'shipped': '已发货',
-    'delivered': '已签收',
-    'logistics_returned': '物流部退回',
-    'logistics_cancelled': '物流部取消',
-    'package_exception': '包裹异常',
-    'rejected': '拒收',
-    'rejected_returned': '拒收已退回',
-    'after_sales_created': '已建售后',
-    'signed': '已签收',
-    'completed': '已完成',
-    'cancelled': '已取消'
-  };
-  return statusNames[status] || status;
+// 🔥 获取状态中文名称（统一复用 orderHelpers 的完整映射，避免遗漏导致英文显示）
+const getStatusName = (status: string): string => getStatusTitle(status);
+
+// 🔥 订单标记 / 支付方式的中文映射（用于编辑日志中文显示）
+const MARK_TYPE_CN: Record<string, string> = {
+  normal: '正常发货单', reserved: '预留单', virtual_delivery: '虚拟发货', return: '退回',
 };
+const PAYMENT_METHOD_CN: Record<string, string> = {
+  wechat: '微信支付', alipay: '支付宝支付', bank_transfer: '银行转账', bank: '银行转账',
+  unionpay: '云闪付', cod: '货到付款', cash: '现金', other: '其他',
+};
+const translateMarkType = (v: string): string => (v ? MARK_TYPE_CN[v] || v : '-');
+const translatePaymentMethod = (v: string): string => (v ? PAYMENT_METHOD_CN[v] || v : '-');
 
 /**
  * @route PUT /api/v1/orders/:id
@@ -1306,6 +1312,24 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
 
     const updateData = req.body;
     const previousStatus = order.status;
+
+    // 🔥 记录编辑前的旧值，供变更日志做新旧对比（避免字段被覆盖后取到新值）
+    const calcCod = (t: any, d: any, cod: any) =>
+      cod !== undefined && cod !== null ? Number(cod) : (Number(t) || 0) - (Number(d) || 0);
+    const oldSnapshot = {
+      shippingName: order.shippingName,
+      shippingPhone: order.shippingPhone,
+      shippingAddress: order.shippingAddress,
+      totalAmount: Number(order.totalAmount) || 0,
+      depositAmount: Number(order.depositAmount) || 0,
+      codAmount: calcCod(order.totalAmount, order.depositAmount, order.codAmount),
+      expressCompany: order.expressCompany,
+      trackingNumber: order.trackingNumber,
+      remark: order.remark,
+      paymentMethod: order.paymentMethod,
+      markType: order.markType,
+      products: Array.isArray(order.products) ? JSON.parse(JSON.stringify(order.products)) : [],
+    };
 
     // 🔥 状态校验：检查状态变更是否合法
     if (updateData.status !== undefined && updateData.status !== order.status) {
@@ -1613,6 +1637,17 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
             ...editUserInfo,
           });
           break;
+        case 'abnormal':
+          // 🔥 写入订单时间线日志
+          writeOperationLog({
+            module: 'order',
+            resourceType: 'order',
+            resourceId: order.id,
+            action: 'abnormal',
+            description: `状态异常${updateData.remark ? `，原因：${updateData.remark}` : ''}`,
+            ...editUserInfo,
+          });
+          break;
       }
     } else if (updateData.status === undefined || updateData.status === previousStatus) {
       // 🔥 非状态变更的编辑操作，记录编辑详情（含新旧值）
@@ -1620,59 +1655,78 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       const changeDetails: string[] = [];
 
       // 收件人
-      if (updateData.receiverName || updateData.shippingName) {
+      const newShippingName = updateData.receiverName || updateData.shippingName;
+      if (newShippingName !== undefined && String(newShippingName) !== String(oldSnapshot.shippingName ?? '')) {
         editFields.push('收件人');
-        changeDetails.push(`收件人: "${order.shippingName || '-'}" → "${updateData.receiverName || updateData.shippingName}"`);
+        changeDetails.push(`收件人: "${oldSnapshot.shippingName || '-'}" → "${newShippingName}"`);
       }
       // 联系电话
-      if (updateData.receiverPhone || updateData.shippingPhone) {
+      const newShippingPhone = updateData.receiverPhone || updateData.shippingPhone;
+      if (newShippingPhone !== undefined && String(newShippingPhone) !== String(oldSnapshot.shippingPhone ?? '')) {
         editFields.push('联系电话');
-        changeDetails.push(`联系电话: "${order.shippingPhone || '-'}" → "${updateData.receiverPhone || updateData.shippingPhone}"`);
+        changeDetails.push(`联系电话: "${oldSnapshot.shippingPhone || '-'}" → "${newShippingPhone}"`);
       }
       // 收货地址
-      if (updateData.receiverAddress || updateData.shippingAddress) {
+      const newShippingAddress = updateData.receiverAddress || updateData.shippingAddress;
+      if (newShippingAddress !== undefined && String(newShippingAddress) !== String(oldSnapshot.shippingAddress ?? '')) {
         editFields.push('收货地址');
-        changeDetails.push(`收货地址: 已更新`);
+        changeDetails.push(`收货地址: "${oldSnapshot.shippingAddress || '-'}" → "${newShippingAddress}"`);
       }
       // 订单金额
-      if (updateData.totalAmount !== undefined) {
+      if (updateData.totalAmount !== undefined && Math.abs(Number(updateData.totalAmount) - oldSnapshot.totalAmount) >= 0.01) {
         editFields.push('订单金额');
-        changeDetails.push(`订单金额: ¥${oldTotalAmount} → ¥${Number(updateData.totalAmount)}`);
+        changeDetails.push(`订单金额: ¥${oldSnapshot.totalAmount} → ¥${Number(updateData.totalAmount)}`);
       }
       // 定金金额
-      if (updateData.depositAmount !== undefined) {
+      if (updateData.depositAmount !== undefined && Math.abs(Number(updateData.depositAmount) - oldSnapshot.depositAmount) >= 0.01) {
         editFields.push('定金金额');
-        changeDetails.push(`定金金额: ¥${oldDepositAmount} → ¥${Number(updateData.depositAmount)}`);
+        changeDetails.push(`定金金额: ¥${oldSnapshot.depositAmount} → ¥${Number(updateData.depositAmount)}`);
+      }
+      // 代收金额（编辑订单金额/定金时按规则同步变更）
+      const newCodAmount = calcCod(order.totalAmount, order.depositAmount, order.codAmount);
+      if ((updateData.totalAmount !== undefined || updateData.depositAmount !== undefined) && Math.abs(newCodAmount - oldSnapshot.codAmount) >= 0.01) {
+        changeDetails.push(`代收金额: ¥${oldSnapshot.codAmount} → ¥${newCodAmount}`);
       }
       // 快递公司
-      if (updateData.expressCompany !== undefined) {
+      if (updateData.expressCompany !== undefined && String(updateData.expressCompany || '') !== String(oldSnapshot.expressCompany || '')) {
         editFields.push('快递公司');
-        changeDetails.push(`快递公司: "${order.expressCompany || '-'}" → "${updateData.expressCompany}"`);
+        changeDetails.push(`快递公司: "${oldSnapshot.expressCompany || '-'}" → "${updateData.expressCompany}"`);
       }
       // 快递单号
-      if (updateData.trackingNumber !== undefined) {
+      if (updateData.trackingNumber !== undefined && String(updateData.trackingNumber || '') !== String(oldSnapshot.trackingNumber || '')) {
         editFields.push('快递单号');
-        changeDetails.push(`快递单号: "${order.trackingNumber || '-'}" → "${updateData.trackingNumber}"`);
+        changeDetails.push(`快递单号: "${oldSnapshot.trackingNumber || '-'}" → "${updateData.trackingNumber}"`);
       }
       // 备注
-      if (updateData.remark !== undefined) {
+      if (updateData.remark !== undefined && String(updateData.remark || '') !== String(oldSnapshot.remark || '')) {
         editFields.push('备注');
-        changeDetails.push(`备注已更新`);
+        changeDetails.push(`备注: "${oldSnapshot.remark || '-'}" → "${updateData.remark}"`);
       }
       // 支付方式
-      if (updateData.paymentMethod !== undefined) {
+      if (updateData.paymentMethod !== undefined && String(updateData.paymentMethod || '') !== String(oldSnapshot.paymentMethod || '')) {
         editFields.push('支付方式');
-        changeDetails.push(`支付方式: "${order.paymentMethod || '-'}" → "${updateData.paymentMethod}"`);
+        changeDetails.push(`支付方式: "${translatePaymentMethod(oldSnapshot.paymentMethod)}" → "${translatePaymentMethod(updateData.paymentMethod)}"`);
       }
       // 订单标记
-      if (updateData.markType !== undefined) {
+      if (updateData.markType !== undefined && String(updateData.markType || '') !== String(oldSnapshot.markType || '')) {
         editFields.push('订单标记');
-        changeDetails.push(`订单标记: "${order.markType || '-'}" → "${updateData.markType}"`);
+        changeDetails.push(`订单标记: "${translateMarkType(oldSnapshot.markType)}" → "${translateMarkType(updateData.markType)}"`);
       }
-      // 商品信息
+      // 商品信息（逐项对比名称/规格/数量）
       if (updateData.products !== undefined) {
-        editFields.push('商品信息');
-        changeDetails.push(`商品信息已更新`);
+        const fmtProducts = (list: any[]): string => {
+          if (!Array.isArray(list) || list.length === 0) return '无';
+          return list
+            .map((p: any) => `${p?.name || p?.productName || '商品'}${p?.skuName ? `(${p.skuName})` : ''}×${Number(p?.quantity) || 1}`)
+            .join('、');
+        };
+        const newProducts = Array.isArray(updateData.products) ? updateData.products : [];
+        const oldProductsText = fmtProducts(oldSnapshot.products);
+        const newProductsText = fmtProducts(newProducts);
+        if (oldProductsText !== newProductsText) {
+          editFields.push('商品信息');
+          changeDetails.push(`商品信息: ${oldProductsText} → ${newProductsText}`);
+        }
       }
 
       if (editFields.length > 0) {

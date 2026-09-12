@@ -649,8 +649,26 @@ router.put('/review/:id', authenticateToken, async (req: Request, res: Response)
     // 写入操作日志
     if (approved) {
       writeOperationLog({ module: 'cod_cancel_audit', resourceType: 'cod_application', resourceId: id, action: 'approve', description: `审核通过取消代收申请`, ...extractUserInfo(req) });
+      // 🔥 同步写入订单时间线日志
+      writeOperationLog({
+        module: 'order',
+        resourceType: 'order',
+        resourceId: application.orderId,
+        action: 'cod_amount_change',
+        description: `取消代收申请审核通过：代收金额改为¥${Number(application.modifiedCodAmount).toFixed(2)}${Number(application.modifiedCodAmount) === 0 ? '（取消代收）' : ''}`,
+        ...extractUserInfo(req)
+      });
     } else {
       writeOperationLog({ module: 'cod_cancel_audit', resourceType: 'cod_application', resourceId: id, action: 'reject', description: `驳回取消代收申请: ${reviewRemark || ''}`, ...extractUserInfo(req) });
+      // 🔥 同步写入订单时间线日志
+      writeOperationLog({
+        module: 'order',
+        resourceType: 'order',
+        resourceId: application.orderId,
+        action: 'cod_cancel_rejected',
+        description: `取消代收申请被驳回${reviewRemark ? `，原因：${reviewRemark}` : ''}`,
+        ...extractUserInfo(req)
+      });
     }
 
     // 🔥 发送消息通知给申请人

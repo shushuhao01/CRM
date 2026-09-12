@@ -251,17 +251,25 @@ export const getOrderTransferConfig = async (): Promise<{ mode: string; delayMin
 /** 获取状态标题 */
 export function getStatusTitle(status: string): string {
   const statusMap: Record<string, string> = {
+    'draft': '草稿',
     'pending': '待确认',
     'pending_transfer': '待流转',
     'pending_audit': '待审核',
+    'pending_approval': '待审核',
+    'pending_shipment': '待发货',
+    'pending_cancel': '待取消',
+    'approved': '已审核',
     'confirmed': '已确认',
     'paid': '已支付',
-    'pending_shipment': '待发货',
     'shipped': '已发货',
+    'in_transit': '运输中',
+    'out_for_delivery': '派送中',
     'delivered': '已签收',
+    'signed': '已签收',
     'completed': '已完成',
     'cancelled': '已取消',
     'refunded': '已退款',
+    'closed': '已关闭',
     'audit_rejected': '审核拒绝',
     'cancel_failed': '取消被拒',
     'rejected': '拒收',
@@ -269,7 +277,10 @@ export function getStatusTitle(status: string): string {
     'logistics_returned': '物流退回',
     'logistics_cancelled': '物流取消',
     'package_exception': '包裹异常',
-    'after_sales_created': '已建售后'
+    'abnormal': '状态异常',
+    'after_sales_created': '已建售后',
+    'virtual_delivery': '虚拟发货',
+    'virtual_shipped': '虚拟已发货'
   };
   return statusMap[status] || status;
 }
@@ -282,8 +293,24 @@ export function getActionTypeTitle(actionType: string | undefined, status: strin
     'submit_audit': '提交审核',
     'audit_approve': '审核通过',
     'audit_reject': '审核拒绝',
+    'cancel_request': '取消申请',
     'cancel_approve': '取消申请通过',
     'cancel_reject': '取消申请拒绝',
+    'auto_transfer': '自动流转',
+    'auto_sync': '物流同步',
+    'after_sales_created': '创建售后',
+    'cod_amount_change': '代收金额变更',
+    'cod_returned': '代收退回',
+    'cod_cancelled': '代收取消',
+    'cod_cancel_rejected': '取消代收被拒',
+    'ship': '已发货',
+    'delivered': '已签收',
+    'rejected': '拒收',
+    'package_exception': '包裹异常',
+    'abnormal': '状态异常',
+    'logistics_returned': '物流退回',
+    'logistics_cancelled': '物流取消',
+    'virtual_delivery': '虚拟发货',
     'status_change': getStatusTitle(status)
   };
   return actionTitleMap[actionType || 'status_change'] || getStatusTitle(status);

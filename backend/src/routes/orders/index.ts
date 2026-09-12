@@ -14,7 +14,8 @@ import { Order } from '../../entities/Order';
 import { DepartmentOrderLimit } from '../../entities/DepartmentOrderLimit';
 import { getTenantRepo } from '../../utils/tenantRepo';
 import { orderNotificationService } from '../../services/OrderNotificationService';
-import { getOrderTransferConfig } from './orderHelpers';
+import { getOrderTransferConfig, saveStatusHistory } from './orderHelpers';
+import { writeOperationLog, extractUserInfo } from '../../utils/operationLogWriter';
 import { registerAuditRoutes } from './orderAudit';
 import { registerShippingRoutes } from './orderShipping';
 import { registerCrudRoutes } from './orderCrud';
@@ -163,7 +164,7 @@ router.get('/transfer-config', async (_req: Request, res: Response) => {
  * @desc 检查并执行订单流转
  * @access Private
  */
-router.post('/check-transfer', async (_req: Request, res: Response) => {
+router.post('/check-transfer', async (req: Request, res: Response) => {
   try {
     log.info('🔄 [订单流转] 检查待流转订单...');
 
@@ -199,6 +200,26 @@ router.post('/check-transfer', async (_req: Request, res: Response) => {
 
         await orderRepository.save(order);
         transferredOrders.push(order);
+
+        // 🔥 写入订单流转日志（订单时间线）
+        const transferUser = extractUserInfo(req);
+        const operatorName = transferUser.username || '系统';
+        writeOperationLog({
+          module: 'order',
+          resourceType: 'order',
+          resourceId: order.id,
+          action: 'auto_transfer',
+          description: `订单流转：待流转 → 待审核`,
+          ...transferUser,
+        });
+        await saveStatusHistory(
+          order.id,
+          'pending_audit',
+          transferUser.userId || null,
+          operatorName,
+          '订单自动流转：待流转 → 待审核',
+          { actionType: 'auto_transfer' }
+        );
 
         // 🔥 发送待审核通知给下单员和管理员
         orderNotificationService.notifyOrderPendingAudit({
