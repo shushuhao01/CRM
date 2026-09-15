@@ -1432,6 +1432,53 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
 
     const updatedOrder = await orderRepository.save(order);
 
+    // 🔥 同步 order_items：订单商品被编辑时重写明细，
+    // 保证商品列表按 order_items 聚合的销量统计与 orders.products 保持一致
+    if (updateData.products !== undefined) {
+      try {
+        const { OrderItem } = await import('../../entities/OrderItem');
+        const orderItemRepo = getTenantRepo(OrderItem);
+        const productRepository = getTenantRepo(Product);
+        const items: any[] = Array.isArray(order.products) ? order.products : [];
+
+        await orderItemRepo.delete({ orderId: order.id });
+
+        const newItems: any[] = [];
+        for (const item of items) {
+          const productId = item.id || item.productId;
+          if (!productId) continue;
+          const quantity = Number(item.quantity) || 1;
+          let fallbackPrice = 0;
+          try {
+            const product = await productRepository.findOne({ where: { id: productId } });
+            fallbackPrice = Number(product?.price) || 0;
+          } catch (_productError) {
+            // 商品查询失败时价格回退为 0，不阻断订单编辑
+          }
+          const unitPrice = Number(item.price) || fallbackPrice;
+          newItems.push(orderItemRepo.create({
+            orderId: order.id,
+            productId,
+            productName: item.name || item.productName || '',
+            productSku: item.sku || '',
+            skuId: item.skuId || null,
+            skuName: item.skuName || null,
+            skuImage: item.skuImage || null,
+            specValues: item.specValues || null,
+            unitPrice,
+            quantity,
+            subtotal: unitPrice * quantity,
+            productImage: item.image || ''
+          }));
+        }
+        if (newItems.length > 0) {
+          await orderItemRepo.save(newItems);
+        }
+      } catch (oiErr) {
+        log.error('[订单编辑] 同步order_items失败:', oiErr);
+      }
+    }
+
     const editUserInfo = extractUserInfo(req);
 
     // 🔥 根据状态变更发送相应通知和保存状态历史

@@ -4,7 +4,8 @@ import { ProductCategory } from '../entities/ProductCategory'
 import { ProductSku } from '../entities/ProductSku'
 import { ProductSpecGroup } from '../entities/ProductSpecGroup'
 import { StockAdjustment } from '../entities/StockAdjustment'
-import { getTenantRepo } from '../utils/tenantRepo'
+import { In } from 'typeorm'
+import { getTenantRepo, tenantSQL } from '../utils/tenantRepo'
 
 import { log } from '../config/logger';
 const getProductRepository = () => getTenantRepo(Product)
@@ -406,54 +407,37 @@ export class ProductController {
 
       const products = await queryBuilder.getMany()
 
-      // 🔥 从订单的products JSON字段统计每个商品的销量
+      // 🔥 从 order_items 统计每个商品的销量
       const productIds = products.map(p => p.id)
       const salesCountMap: Record<string, number> = {}
 
       if (productIds.length > 0) {
         try {
-          const { Order } = await import('../entities/Order')
-          const orderRepo = getTenantRepo(Order)
+          // 🔥 性能根治：原实现对 order.products(JSON) 拼 N 个前导通配符 LIKE 的 OR 条件做全表扫描，
+          // （N = 商品总数，商品列表页一次性加载全部商品时 N 会非常大）
+          // 再把命中订单整行读进 Node 内存逐条 JSON.parse、对每个明细项做数组线性查找，
+          // 复杂度 O(订单行数 × 商品总数)，且全程在 Node 主线程同步执行，低配服务器上会阻塞事件循环导致整站卡死。
+          // 现改为在 order_items（创建订单时与 orders.products 双写）上按 product_id 聚合，
+          // 由数据库直接汇总后只回传聚合结果：无全表 LIKE 扫描、无 JSON 解析、无二次方循环。
+          const { getDataSource } = await import('../config/database')
+          const ds = getDataSource()
+          const t = tenantSQL('o.')
 
-          // 🔥 获取有效订单（已审核通过且未取消的订单）
-          // 🔥 性能修复：原来无条件拉取租户内全部订单到内存解析JSON统计（订单量大时每次打开商品列表都30秒+）
-          // 改为只拉取 products JSON 中包含当前页商品ID的订单（每页最多10~20个商品的LIKE过滤，大幅减少返回行数）
-          const productIdConditions = productIds.map((_id, i) => `order.products LIKE :pid${i}`)
-          const productIdParams: Record<string, string> = {}
-          productIds.forEach((id, i) => {
-            productIdParams[`pid${i}`] = `%${id}%`
-          })
+          const salesRows = await ds.query(
+            `SELECT oi.productId AS productId, SUM(oi.quantity) AS cnt
+               FROM order_items oi
+               INNER JOIN orders o ON o.id = oi.orderId
+              WHERE oi.productId IN (${productIds.map(() => '?').join(',')})
+                AND o.status NOT IN ('cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected')
+                ${t.sql}
+              GROUP BY oi.productId`,
+            [...productIds, ...t.params]
+          )
 
-          const validOrders = await orderRepo
-            .createQueryBuilder('order')
-            .select(['order.id', 'order.products'])
-            .where('order.status NOT IN (:...excludeStatuses)', {
-              excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
-            })
-            .andWhere(`(${productIdConditions.join(' OR ')})`, productIdParams)
-            .getMany()
-
-          // 🔥 从每个订单的products JSON字段中统计销量
-          validOrders.forEach(order => {
-            if (order.products) {
-              try {
-                const orderProducts = typeof order.products === 'string'
-                  ? JSON.parse(order.products)
-                  : order.products
-
-                if (Array.isArray(orderProducts)) {
-                  orderProducts.forEach((item: any) => {
-                    const productId = item.productId || item.id
-                    const quantity = Number(item.quantity) || 1
-                    if (productId && productIds.includes(String(productId))) {
-                      salesCountMap[String(productId)] = (salesCountMap[String(productId)] || 0) + quantity
-                    }
-                  })
-                }
-              } catch (_parseError) {
-                // JSON解析失败，跳过该订单
-                log.warn('[商品列表] 解析订单商品JSON失败:', order.id)
-              }
+          salesRows.forEach((row: any) => {
+            const productId = row.productId
+            if (productId) {
+              salesCountMap[String(productId)] = Number(row.cnt) || 0
             }
           })
 
@@ -1042,30 +1026,30 @@ export class ProductController {
 
               if (specGroupList.length > 0) {
                 await specGroupRepo.delete({ productId: id })
-                for (let i = 0; i < specGroupList.length; i++) {
-                  const g = specGroupList[i]
-                  const specGroup = specGroupRepo.create({
-                    id: g.id || generateId('sg_'),
-                    productId: id,
-                    specName: g.specName,
-                    specValues: g.specValues || [],
-                    sortOrder: i
-                  })
-                  await specGroupRepo.save(specGroup)
-                }
+                // 🔥 性能：一次性批量写入规格组，避免逐个 save 产生 N 次数据库往返
+                await specGroupRepo.save(specGroupList.map((g: any, i: number) => specGroupRepo.create({
+                  id: g.id || generateId('sg_'),
+                  productId: id,
+                  specName: g.specName,
+                  specValues: g.specValues || [],
+                  sortOrder: i
+                })))
               }
 
-              const existingSkuIds = (await skuRepo.find({ where: { productId: id }, select: ['id'] })).map(s => s.id)
-              const newSkuIds = skuList.filter((s: any) => s.id).map((s: any) => s.id)
-              const toDelete = existingSkuIds.filter(sid => !newSkuIds.includes(sid))
-              for (const delId of toDelete) {
-                await skuRepo.delete(delId)
+              // 🔥 性能：一次性取回该商品全部 SKU，用 Map/Set 在内存中比对，
+              // 避免每个 SKU 走一次 findOne + 一次 save 的 N+1 往返（多规格商品 SKU 可达数百个）
+              const existingSkus = await skuRepo.find({ where: { productId: id } })
+              const existingSkuMap = new Map(existingSkus.map(s => [String(s.id), s]))
+              const newSkuIds = new Set(skuList.filter((s: any) => s.id).map((s: any) => String(s.id)))
+              const toDelete = existingSkus.filter(s => !newSkuIds.has(String(s.id))).map(s => s.id)
+              if (toDelete.length > 0) {
+                await skuRepo.delete({ id: In(toDelete) })
               }
 
+              const skusToSave: any[] = []
               for (let i = 0; i < skuList.length; i++) {
                 const s = skuList[i]
-                const skuId = s.id || generateId('sku_')
-                const existing = s.id ? await skuRepo.findOne({ where: { id: s.id } }) : null
+                const existing = s.id ? existingSkuMap.get(String(s.id)) : undefined
                 if (existing) {
                   existing.skuCode = s.skuCode || existing.skuCode
                   existing.skuName = s.skuName || existing.skuName
@@ -1078,10 +1062,10 @@ export class ProductController {
                   existing.specValues = s.specValues || existing.specValues
                   existing.sortOrder = i
                   existing.status = s.status || existing.status
-                  await skuRepo.save(existing)
+                  skusToSave.push(existing)
                 } else {
-                  const newSku = skuRepo.create({
-                    id: skuId,
+                  skusToSave.push(skuRepo.create({
+                    id: s.id || generateId('sku_'),
                     productId: id,
                     skuCode: s.skuCode || `${product.code}-${i + 1}`,
                     skuName: s.skuName || '',
@@ -1095,9 +1079,11 @@ export class ProductController {
                     specValues: s.specValues || {},
                     sortOrder: i,
                     status: s.status || 'active'
-                  })
-                  await skuRepo.save(newSku)
+                  }))
                 }
+              }
+              if (skusToSave.length > 0) {
+                await skuRepo.save(skusToSave)
               }
 
               const allSkus = await skuRepo.find({ where: { productId: id } })
