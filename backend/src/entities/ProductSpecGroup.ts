@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm'
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm'
 import { Product } from './Product'
 
 @Entity('product_spec_groups')
@@ -9,6 +9,8 @@ export class ProductSpecGroup {
   @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
   tenantId: string | null
 
+  // 🔥 性能：按 product_id 查规格组，缺索引会导致全表扫描
+  @Index('idx_product_spec_groups_productId')
   @Column({ name: 'product_id', type: 'varchar', length: 50, comment: '所属商品ID' })
   productId: string
 

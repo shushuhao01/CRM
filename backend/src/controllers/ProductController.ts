@@ -424,7 +424,7 @@ export class ProductController {
           const t = tenantSQL('o.')
 
           const salesRows = await ds.query(
-            `SELECT oi.productId AS productId, SUM(oi.quantity) AS cnt
+            `SELECT /*+ MAX_EXECUTION_TIME(3000) */ oi.productId AS productId, SUM(oi.quantity) AS cnt
                FROM order_items oi
                INNER JOIN orders o ON o.id = oi.orderId
               WHERE oi.productId IN (${productIds.map(() => '?').join(',')})
@@ -433,6 +433,8 @@ export class ProductController {
               GROUP BY oi.productId`,
             [...productIds, ...t.params]
           )
+          // 🔥 兜底：MAX_EXECUTION_TIME(3s) 硬性熔断（MySQL 5.7.8+，MariaDB 会当普通注释忽略），
+          // 即使索引意外缺失导致查询变慢，也只损失销量数字（catch 置空），绝不允许拖垮列表接口
 
           salesRows.forEach((row: any) => {
             const productId = row.productId

@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Order } from './Order';
 import { Product } from './Product';
 
@@ -10,11 +10,16 @@ export class OrderItem {
   @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
   tenantId: string | null;
 
-  @Column({ type: 'varchar', length: 50, comment: '订单ID' })
-  orderId: string;
-
+  // 🔥 性能关键索引：商品列表销量聚合按 product_id 过滤（缺失时 order_items 全表扫描，
+  // 低配服务器上单次查询可达数秒并拖垮整个站点，见 AutoMigrationService 启动自动补建）
+  @Index('idx_order_items_productId')
   @Column({ type: 'varchar', length: 50, comment: '产品ID' })
   productId: string;
+
+  // 订单编辑重写明细（DELETE WHERE orderId）与按订单查明细均走此索引
+  @Index('idx_order_items_orderId')
+  @Column({ type: 'varchar', length: 50, comment: '订单ID' })
+  orderId: string;
 
   @Column({ length: 100, comment: '产品名称（快照）' })
   productName: string;

@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm'
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm'
 import { Product } from './Product'
 
 @Entity('product_skus')
@@ -9,6 +9,8 @@ export class ProductSku {
   @Column('varchar', { name: 'tenant_id', length: 36, nullable: true })
   tenantId: string | null
 
+  // 🔥 性能：商品列表/详情均按 product_id 查 SKU，缺索引会导致全表扫描（低配服务器多次循环查询时拖垮站点）
+  @Index('idx_product_skus_productId')
   @Column({ name: 'product_id', type: 'varchar', length: 50, comment: '所属商品ID' })
   productId: string
 
