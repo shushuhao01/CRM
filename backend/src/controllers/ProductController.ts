@@ -21,13 +21,20 @@ function generateId(prefix: string = ''): string {
 
 // 🔥 生产索引兜底：生产环境 AUTO_MIGRATION=false 时 AutoMigrationService 会整体跳过，
 // 导致商品销量聚合/SKU 查询退化为全表扫描（低配服务器单次列表可达 3~7 秒并拖垮整站）。
-// 此处按项目「各入口懒触发」惯例，首次进入商品接口时幂等补建关键索引（只增不改，进程内只执行一次）。
+// 安全设计（防 DDL 拖死全站）：
+//   1. 后台 fire-and-forget 执行，绝不 await 阻塞请求
+//   2. DDL 前 SET lock_wait_timeout=3：拿不到 MDL 锁 3 秒即放弃，不会让后续查询排队堵死
+//   3. 失败后冷却 60 秒再试，成功则进程内永久跳过
 let productIndexesEnsured = false
-let ensuringProductIndexes: Promise<void> | null = null
-function ensureProductQueryIndexes(): Promise<void> {
-  if (productIndexesEnsured) return Promise.resolve()
-  if (ensuringProductIndexes) return ensuringProductIndexes
-  ensuringProductIndexes = (async () => {
+let ensuringProductIndexes = false
+let lastIndexAttemptAt = 0
+function ensureProductQueryIndexes(): void {
+  if (productIndexesEnsured) return
+  const now = Date.now()
+  if (ensuringProductIndexes || now - lastIndexAttemptAt < 60_000) return
+  ensuringProductIndexes = true
+  lastIndexAttemptAt = now
+  void (async () => {
     try {
       const { getDataSource } = await import('../config/database')
       const ds = getDataSource()
@@ -43,24 +50,29 @@ function ensureProductQueryIndexes(): Promise<void> {
           WHERE TABLE_SCHEMA = DATABASE() AND INDEX_NAME IN (${names})`
       )
       const existing = new Set(rows.map(r => String(r.idxName)))
+      let allDone = true
       for (const w of wanted) {
         if (existing.has(w.name)) continue
         try {
+          // 限制 MDL 锁等待 3 秒：拿不到锁立即放弃，绝不阻塞后续业务查询排队
+          await ds.query('SET SESSION lock_wait_timeout = 3')
           // 在线加二级索引，不锁业务读写（MySQL 5.6+/MariaDB InnoDB）
           await ds.query(`ALTER TABLE \`${w.table}\` ADD INDEX \`${w.name}\` (\`${w.cols}\`), ALGORITHM=INPLACE, LOCK=NONE`)
           log.info('[商品索引兜底] 已创建:', `${w.table}.${w.name}`)
         } catch (e: any) {
           if (String(e?.message || '').includes('Duplicate key name')) continue
-          log.warn('[商品索引兜底] 创建失败(不影响服务):', `${w.name}`, e?.message)
+          log.warn('[商品索引兜底] 创建失败(60秒后重试):', `${w.name}`, e?.message)
+          allDone = false
+          break
         }
       }
-      productIndexesEnsured = true
+      productIndexesEnsured = allDone
     } catch (e) {
-      log.warn('[商品索引兜底] 检查失败(下次请求重试):', e)
-      ensuringProductIndexes = null
+      log.warn('[商品索引兜底] 检查失败(60秒后重试):', e)
+    } finally {
+      ensuringProductIndexes = false
     }
   })()
-  return ensuringProductIndexes
 }
 
 // 辅助函数：构建分类树
@@ -389,7 +401,7 @@ export class ProductController {
    */
   static async getProducts(req: Request, res: Response): Promise<void> {
     try {
-      await ensureProductQueryIndexes()
+      ensureProductQueryIndexes()
       const {
         page = 1,
         pageSize = 10,
@@ -649,7 +661,7 @@ export class ProductController {
    */
   static async getProductDetail(req: Request, res: Response): Promise<void> {
     try {
-      await ensureProductQueryIndexes()
+      ensureProductQueryIndexes()
       const { id } = req.params
       const productRepo = getProductRepository()
       const product = await productRepo.findOne({
