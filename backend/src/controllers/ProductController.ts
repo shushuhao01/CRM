@@ -497,18 +497,30 @@ export class ProductController {
       }
 
       // 统计有SKU商品的上下架SKU数量
+      // 🔥 性能：单条聚合 SQL 替代逐商品 find 的 N+1 查询（多规格商品多时 N 次数据库往返）
       const skuStatusMap: Record<string, { active: number; inactive: number }> = {}
       const skuProducts = products.filter(p => (p as any).skuType === 'multi')
       if (skuProducts.length > 0) {
         try {
-          const skuRepo = getSkuRepository()
-          for (const sp of skuProducts) {
-            const allSkus = await skuRepo.find({ where: { productId: sp.id } })
-            skuStatusMap[sp.id] = {
-              active: allSkus.filter(s => s.status === 'active').length,
-              inactive: allSkus.filter(s => s.status !== 'active').length
+          const { getDataSource } = await import('../config/database')
+          const ds = getDataSource()
+          const skuIds = skuProducts.map(sp => sp.id)
+          const st = tenantSQL('')
+          const skuRows: any[] = await ds.query(
+            `SELECT product_id,
+                    SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS activeCnt,
+                    SUM(CASE WHEN status <> 'active' THEN 1 ELSE 0 END) AS inactiveCnt
+               FROM product_skus
+              WHERE product_id IN (${skuIds.map(() => '?').join(',')})${st.sql}
+              GROUP BY product_id`,
+            [...skuIds, ...st.params]
+          )
+          skuRows.forEach(r => {
+            skuStatusMap[String(r.product_id)] = {
+              active: Number(r.activeCnt) || 0,
+              inactive: Number(r.inactiveCnt) || 0
             }
-          }
+          })
         } catch (e) { log.error('统计SKU状态失败:', e) }
       }
 
