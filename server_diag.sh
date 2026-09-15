@@ -3,7 +3,17 @@
 # 用法：在服务器上执行  bash server_diag.sh
 # 作用：定位「商品列表卡死/整站 502」的根因，若关键索引缺失则直接补上
 
-cd /www/wwwroot/CRM/backend || cd "$(dirname "$0")/backend" || { echo "找不到 backend 目录"; exit 1; }
+# 自动定位 backend 目录：优先脚本所在目录（支持把脚本直接放进 backend 内运行）
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  cd "$SCRIPT_DIR"
+elif [ -f "$SCRIPT_DIR/backend/.env" ]; then
+  cd "$SCRIPT_DIR/backend"
+elif [ -f /www/wwwroot/abc789.cn/backend/.env ]; then
+  cd /www/wwwroot/abc789.cn/backend
+else
+  echo "找不到 backend 目录(未发现 .env)，请把脚本放在 backend 目录内运行"; exit 1
+fi
 
 echo "========== 1. PM2 进程状态 =========="
 pm2 list 2>/dev/null || echo "(pm2 不可用)"
@@ -74,7 +84,12 @@ ensure_index product_skus idx_product_skus_productId "product_id"
 ensure_index product_spec_groups idx_product_spec_groups_productId "product_id"
 
 echo ""
-echo "========== 8. MySQL 版本(确认 MAX_EXECUTION_TIME 是否生效) =========="
+echo "========== 8. 表排序规则对比(定位JOIN变慢根因) =========="
+$M_SHOW "SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME, COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='${DB_NAME}' AND ((TABLE_NAME='order_items' AND COLUMN_NAME IN ('order_id','product_id','tenant_id')) OR (TABLE_NAME='orders' AND COLUMN_NAME IN ('id','tenant_id','status'))) ORDER BY TABLE_NAME, COLUMN_NAME;" 2>/dev/null
+$M_SHOW "SELECT TABLE_NAME, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='${DB_NAME}' AND TABLE_NAME IN ('order_items','orders','product_skus','product_spec_groups');" 2>/dev/null
+
+echo ""
+echo "========== 9. MySQL 版本(确认 MAX_EXECUTION_TIME 是否生效) =========="
 $M "SELECT VERSION();" 2>/dev/null
 
 echo ""
