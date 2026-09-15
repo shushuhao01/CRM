@@ -19,6 +19,50 @@ function generateId(prefix: string = ''): string {
   return `${prefix}${Date.now().toString()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
+// 🔥 生产索引兜底：生产环境 AUTO_MIGRATION=false 时 AutoMigrationService 会整体跳过，
+// 导致商品销量聚合/SKU 查询退化为全表扫描（低配服务器单次列表可达 3~7 秒并拖垮整站）。
+// 此处按项目「各入口懒触发」惯例，首次进入商品接口时幂等补建关键索引（只增不改，进程内只执行一次）。
+let productIndexesEnsured = false
+let ensuringProductIndexes: Promise<void> | null = null
+function ensureProductQueryIndexes(): Promise<void> {
+  if (productIndexesEnsured) return Promise.resolve()
+  if (ensuringProductIndexes) return ensuringProductIndexes
+  ensuringProductIndexes = (async () => {
+    try {
+      const { getDataSource } = await import('../config/database')
+      const ds = getDataSource()
+      const wanted = [
+        { table: 'order_items', name: 'idx_order_items_productId', cols: 'product_id' },
+        { table: 'order_items', name: 'idx_order_items_orderId', cols: 'order_id' },
+        { table: 'product_skus', name: 'idx_product_skus_productId', cols: 'product_id' },
+        { table: 'product_spec_groups', name: 'idx_product_spec_groups_productId', cols: 'product_id' },
+      ]
+      const names = wanted.map(w => `'${w.name}'`).join(',')
+      const rows: any[] = await ds.query(
+        `SELECT DISTINCT INDEX_NAME AS idxName FROM information_schema.STATISTICS
+          WHERE TABLE_SCHEMA = DATABASE() AND INDEX_NAME IN (${names})`
+      )
+      const existing = new Set(rows.map(r => String(r.idxName)))
+      for (const w of wanted) {
+        if (existing.has(w.name)) continue
+        try {
+          // 在线加二级索引，不锁业务读写（MySQL 5.6+/MariaDB InnoDB）
+          await ds.query(`ALTER TABLE \`${w.table}\` ADD INDEX \`${w.name}\` (\`${w.cols}\`), ALGORITHM=INPLACE, LOCK=NONE`)
+          log.info('[商品索引兜底] 已创建:', `${w.table}.${w.name}`)
+        } catch (e: any) {
+          if (String(e?.message || '').includes('Duplicate key name')) continue
+          log.warn('[商品索引兜底] 创建失败(不影响服务):', `${w.name}`, e?.message)
+        }
+      }
+      productIndexesEnsured = true
+    } catch (e) {
+      log.warn('[商品索引兜底] 检查失败(下次请求重试):', e)
+      ensuringProductIndexes = null
+    }
+  })()
+  return ensuringProductIndexes
+}
+
 // 辅助函数：构建分类树
 function buildCategoryTree(categories: ProductCategory[]): any[] {
   const categoryMap = new Map<string, any>()
@@ -345,6 +389,7 @@ export class ProductController {
    */
   static async getProducts(req: Request, res: Response): Promise<void> {
     try {
+      await ensureProductQueryIndexes()
       const {
         page = 1,
         pageSize = 10,
@@ -604,6 +649,7 @@ export class ProductController {
    */
   static async getProductDetail(req: Request, res: Response): Promise<void> {
     try {
+      await ensureProductQueryIndexes()
       const { id } = req.params
       const productRepo = getProductRepository()
       const product = await productRepo.findOne({
