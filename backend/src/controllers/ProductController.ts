@@ -470,35 +470,35 @@ export class ProductController {
 
       if (productIds.length > 0) {
         try {
-          // 🔥 性能根治：原实现对 order.products(JSON) 拼 N 个前导通配符 LIKE 的 OR 条件做全表扫描，
-          // （N = 商品总数，商品列表页一次性加载全部商品时 N 会非常大）
-          // 再把命中订单整行读进 Node 内存逐条 JSON.parse、对每个明细项做数组线性查找，
-          // 复杂度 O(订单行数 × 商品总数)，且全程在 Node 主线程同步执行，低配服务器上会阻塞事件循环导致整站卡死。
-          // 现改为在 order_items（创建订单时与 orders.products 双写）上按 product_id 聚合，
-          // 由数据库直接汇总后只回传聚合结果：无全表 LIKE 扫描、无 JSON 解析、无二次方循环。
+          // 🔥 性能根治 v2：v1 的 INNER JOIN orders 在生产上固定 3 秒（实测 IN 1个id也 3031ms），
+          // 特征为 JOIN 列排序规则(collation)不匹配导致索引失效、逐行全表比较。
+          // 生产数据量级（order_items <3000 行、orders <1万行）下最优解是：
+          // 两条单表简单查询 + Node 内存聚合，无 JOIN/GROUP BY，毫秒级返回。
           const { getDataSource } = await import('../config/database')
           const ds = getDataSource()
-          const t = tenantSQL('o.')
+          const t = tenantSQL('')
 
-          const salesRows = await ds.query(
-            `SELECT /*+ MAX_EXECUTION_TIME(3000) */ oi.productId AS productId, SUM(oi.quantity) AS cnt
-               FROM order_items oi
-               INNER JOIN orders o ON o.id = oi.orderId
-              WHERE oi.productId IN (${productIds.map(() => '?').join(',')})
-                AND o.status NOT IN ('cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected')
-                ${t.sql}
-              GROUP BY oi.productId`,
+          // 1) 有效订单 id 集合（排除取消/待转移/待审核/审核拒绝）
+          const validOrderRows: any[] = await ds.query(
+            `SELECT id FROM orders
+              WHERE status NOT IN ('cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected')${t.sql}`,
+            [...t.params]
+          )
+          const validOrderIds = new Set(validOrderRows.map(r => String(r.id)))
+
+          // 2) 拉回相关明细行（走 idx_order_items_productId 索引），内存中按有效订单过滤并聚合
+          const itemRows: any[] = await ds.query(
+            `SELECT order_id AS orderId, product_id AS productId, quantity
+               FROM order_items
+              WHERE product_id IN (${productIds.map(() => '?').join(',')})${t.sql}`,
             [...productIds, ...t.params]
           )
-          // 🔥 兜底：MAX_EXECUTION_TIME(3s) 硬性熔断（MySQL 5.7.8+，MariaDB 会当普通注释忽略），
-          // 即使索引意外缺失导致查询变慢，也只损失销量数字（catch 置空），绝不允许拖垮列表接口
-
-          salesRows.forEach((row: any) => {
-            const productId = row.productId
-            if (productId) {
-              salesCountMap[String(productId)] = Number(row.cnt) || 0
-            }
-          })
+          for (const row of itemRows) {
+            if (!row.productId) continue
+            if (!validOrderIds.has(String(row.orderId))) continue
+            const key = String(row.productId)
+            salesCountMap[key] = (salesCountMap[key] || 0) + (Number(row.quantity) || 0)
+          }
 
           log.info('[商品列表] 销量统计:', salesCountMap)
         } catch (salesError) {
