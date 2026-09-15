@@ -56,10 +56,13 @@ export const productApi = {
 
   /**
    * 获取产品详情
+   * @param opts.withStats 是否统计销量（默认 true）。销量统计需全表扫描订单表，
+   *   编辑页等不使用该数据的场景传 false 可跳过，降低低配服务器压力。
    */
-  async getDetail(id: string): Promise<Product> {
+  async getDetail(id: string, opts: { withStats?: boolean } = {}): Promise<Product> {
     try {
-      const response = await api.get<{ data: Product }>(`/products/${id}`)
+      const params = opts.withStats === false ? { withStats: 0 } : undefined
+      const response = await api.get<{ data: Product }>(`/products/${id}`, { params } as any)
       const d = (response as any).data
       if (d && d.id) return d as Product
       if (d && d.data && d.data.id) return d.data as Product

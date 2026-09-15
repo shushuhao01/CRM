@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="product-edit">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -1327,9 +1327,10 @@ const loadProductInfo = async () => {
     }
 
     // 优先通过API获取完整商品详情（含SKU数据）
+    // withStats: false —— 编辑页不使用销量统计，跳过服务端对订单表的全表扫描
     let product: any = null
     try {
-      product = await productApi.getDetail(String(productId))
+      product = await productApi.getDetail(String(productId), { withStats: false })
     } catch (e) {
       console.warn('API获取详情失败，回退到store:', e)
     }

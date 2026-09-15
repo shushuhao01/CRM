@@ -671,46 +671,52 @@ export class ProductController {
       // 统计销量
       let salesCount = 0
       let salesAmount = 0
-      try {
-        const { Order } = await import('../entities/Order')
-        const orderRepo = getTenantRepo(Order)
-        const idStr = String(product.id)
-        // 🔥 性能优化：在数据库层用 LIKE 粗筛"仅包含该商品的订单"，
-        // 避免加载全部订单到内存 + 逐单 JSON.parse，导致 2核2G 低配环境并发查看详情时内存/CPU 打满崩溃
-        const validOrders = await orderRepo
-          .createQueryBuilder('order')
-          .select(['order.id', 'order.products'])
-          .where('order.status NOT IN (:...excludeStatuses)', {
-            excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
+      // 🔥 性能开关：销量统计需对 order.products 做前导通配符 LIKE（用不上索引，只能全表扫描），
+      // 再把命中订单整行读入内存逐条 JSON.parse。订单量大时在 2核2G 环境开销显著，
+      // 不使用销量的场景（如商品编辑页）传 ?withStats=0 可直接跳过这次扫描。
+      const withStats = String(req.query.withStats ?? '1') !== '0'
+      if (withStats) {
+        try {
+          const { Order } = await import('../entities/Order')
+          const orderRepo = getTenantRepo(Order)
+          const idStr = String(product.id)
+          // 🔥 性能优化：在数据库层用 LIKE 粗筛"仅包含该商品的订单"，
+          // 避免加载全部订单到内存 + 逐单 JSON.parse，导致 2核2G 低配环境并发查看详情时内存/CPU 打满崩溃
+          const validOrders = await orderRepo
+            .createQueryBuilder('order')
+            .select(['order.id', 'order.products'])
+            .where('order.status NOT IN (:...excludeStatuses)', {
+              excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
+            })
+            .andWhere(
+              '(order.products LIKE :p1 OR order.products LIKE :p2 OR order.products LIKE :p3 OR order.products LIKE :p4)',
+              {
+                p1: `%"productId":${idStr}%`,
+                p2: `%"productId":"${idStr}"%`,
+                p3: `%"id":${idStr}%`,
+                p4: `%"id":"${idStr}"%`
+              }
+            )
+            .getMany()
+          validOrders.forEach((order: any) => {
+            try {
+              const prods = typeof order.products === 'string' ? JSON.parse(order.products) : order.products
+              if (Array.isArray(prods)) {
+                prods.forEach((p: any) => {
+                  const pid = String(p.productId || p.id || '')
+                  const qty = Number(p.quantity || 0)
+                  const price = Number(p.price || 0)
+                  if (pid === product.id || pid === String(product.id)) {
+                    salesCount += qty
+                    salesAmount += qty * price
+                  }
+                })
+              }
+            } catch (_) { /* ignore */ }
           })
-          .andWhere(
-            '(order.products LIKE :p1 OR order.products LIKE :p2 OR order.products LIKE :p3 OR order.products LIKE :p4)',
-            {
-              p1: `%"productId":${idStr}%`,
-              p2: `%"productId":"${idStr}"%`,
-              p3: `%"id":${idStr}%`,
-              p4: `%"id":"${idStr}"%`
-            }
-          )
-          .getMany()
-        validOrders.forEach((order: any) => {
-          try {
-            const prods = typeof order.products === 'string' ? JSON.parse(order.products) : order.products
-            if (Array.isArray(prods)) {
-              prods.forEach((p: any) => {
-                const pid = String(p.productId || p.id || '')
-                const qty = Number(p.quantity || 0)
-                const price = Number(p.price || 0)
-                if (pid === product.id || pid === String(product.id)) {
-                  salesCount += qty
-                  salesAmount += qty * price
-                }
-              })
-            }
-          } catch (_) { /* ignore */ }
-        })
-      } catch (e) {
-        log.error('[商品详情] 统计销量失败:', e)
+        } catch (e) {
+          log.error('[商品详情] 统计销量失败:', e)
+        }
       }
 
       res.json({

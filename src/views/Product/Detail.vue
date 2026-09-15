@@ -2018,8 +2018,13 @@ onMounted(() => {
 }
 
 .description {
+  flex: 1;
+  min-width: 0;
   line-height: 1.6;
   color: #606266;
+  /* 🔥 保留商品描述在编辑框中的换行/多空格排版，避免被折叠成一行 */
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .price-info,
