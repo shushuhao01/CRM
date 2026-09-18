@@ -119,6 +119,9 @@ router.get('/order-timeline/:orderId', async (req: Request, res: Response) => {
                createdAt AS created_at, 'status_history' AS source
         FROM order_status_history
         WHERE orderId = ? ${tenantWhere}
+          -- 自动流转在合并时间线中由 operation_logs(action='auto_transfer') 呈现，
+          -- status_history 的同动作行会与之重复，故排除（历史数据同样生效）
+          AND (actionType IS NULL OR actionType <> 'auto_transfer')
       )
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -150,7 +153,7 @@ router.get('/order-timeline/:orderId', async (req: Request, res: Response) => {
       SELECT (
         (SELECT COUNT(*) FROM operation_logs WHERE module = 'order' AND resource_id = ? ${tenantWhere})
         +
-        (SELECT COUNT(*) FROM order_status_history WHERE order_id = ? ${tenantWhere})
+        (SELECT COUNT(*) FROM order_status_history WHERE order_id = ? ${tenantWhere} AND (actionType IS NULL OR actionType <> 'auto_transfer'))
       ) AS total
     `;
     const countResult = await AppDataSource.query(countSql, [orderId, ...tenantParams, orderId, ...tenantParams]).catch(() => [{ total: 0 }]);
