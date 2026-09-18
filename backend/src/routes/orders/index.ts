@@ -202,22 +202,23 @@ router.post('/check-transfer', async (req: Request, res: Response) => {
         transferredOrders.push(order);
 
         // 🔥 写入订单流转日志（订单时间线）
+        // 自动流转是系统行为：操作人统一记为「系统」；成员手动提审（submit-audit）才记录实际成员
         const transferUser = extractUserInfo(req);
-        const operatorName = transferUser.username || '系统';
         writeOperationLog({
           module: 'order',
           resourceType: 'order',
           resourceId: order.id,
           action: 'auto_transfer',
-          description: `订单流转：待流转 → 待审核`,
-          ...transferUser,
+          description: `系统自动流转：待流转 → 待审核`,
+          username: '系统',
+          tenantId: transferUser.tenantId,
         });
         await saveStatusHistory(
           order.id,
           'pending_audit',
-          transferUser.userId || null,
-          operatorName,
-          '订单自动流转：待流转 → 待审核',
+          null,
+          '系统',
+          '系统自动流转：待流转 → 待审核',
           { actionType: 'auto_transfer' }
         );
 

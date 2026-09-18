@@ -182,6 +182,16 @@ router.post('/create', authenticateToken, async (req: Request, res: Response) =>
 
     await appRepo.save(application);
 
+    // 🔥 写入订单时间线日志：提交取消代收申请
+    writeOperationLog({
+      module: 'order',
+      resourceType: 'order',
+      resourceId: orderId,
+      action: 'cod_cancel_apply',
+      description: `提交取消代收申请：原代收金额 ¥${originalCodAmount.toFixed(2)}，申请改为 ¥${newAmount.toFixed(2)}${Number(newAmount) === 0 ? '（取消代收）' : ''}，原因：${cancelReason}`,
+      ...extractUserInfo(req),
+    });
+
     // 🔥 发送消息通知给审核人员（财务/管理员）
     try {
       const userRepo = getTenantRepo(User);
@@ -279,6 +289,7 @@ router.put('/update/:id', authenticateToken, async (req: Request, res: Response)
     }
 
     // 更新申请
+    const wasRejected = application.status === 'rejected';
     application.modifiedCodAmount = newAmount;
     application.cancelReason = cancelReason;
     application.paymentProof = paymentProof || null;
@@ -294,6 +305,16 @@ router.put('/update/:id', authenticateToken, async (req: Request, res: Response)
     }
 
     await appRepo.save(application);
+
+    // 🔥 写入订单时间线日志：修改/重新提交取消代收申请
+    writeOperationLog({
+      module: 'order',
+      resourceType: 'order',
+      resourceId: application.orderId,
+      action: 'cod_cancel_apply_update',
+      description: `${wasRejected ? '重新提交取消代收申请' : '修改取消代收申请'}：申请金额改为 ¥${newAmount.toFixed(2)}，原因：${cancelReason}`,
+      ...extractUserInfo(req),
+    });
 
     res.json({ success: true, message: '申请更新成功' });
   } catch (error: any) {
@@ -732,6 +753,16 @@ router.delete('/cancel/:id', authenticateToken, async (req: Request, res: Respon
 
     application.status = 'cancelled';
     await appRepo.save(application);
+
+    // 🔥 写入订单时间线日志：撤销取消代收申请
+    writeOperationLog({
+      module: 'order',
+      resourceType: 'order',
+      resourceId: application.orderId,
+      action: 'cod_cancel_apply_cancelled',
+      description: `撤销取消代收申请（申请金额 ¥${Number(application.modifiedCodAmount).toFixed(2)}）`,
+      ...extractUserInfo(req),
+    });
 
     res.json({ success: true, message: '申请已撤销' });
   } catch (error: any) {
