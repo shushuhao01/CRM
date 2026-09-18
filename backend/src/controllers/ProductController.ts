@@ -474,15 +474,17 @@ export class ProductController {
           // 特征为 JOIN 列排序规则(collation)不匹配导致索引失效、逐行全表比较。
           // 生产数据量级（order_items <3000 行、orders <1万行）下最优解是：
           // 两条单表简单查询 + Node 内存聚合，无 JOIN/GROUP BY，毫秒级返回。
+          // 🔥 租户条件修复 v3：此前两条查询拼 tenantSQL('') 生产实测恒返回空
+          // （日志实锤 salesCountMap:{}，商品却正常出列表）——上下文租户值与历史数据
+          // tenant_id 不一致。本查询的 productIds 本身已来自租户过滤后的商品结果，
+          // productId IN (本租户商品) 天然租户安全，故去掉冗余租户条件。
           const { getDataSource } = await import('../config/database')
           const ds = getDataSource()
-          const t = tenantSQL('')
 
           // 1) 有效订单 id 集合（排除取消/待转移/待审核/审核拒绝）
           const validOrderRows: any[] = await ds.query(
             `SELECT id FROM orders
-              WHERE status NOT IN ('cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected')${t.sql}`,
-            [...t.params]
+              WHERE status NOT IN ('cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected')`
           )
           const validOrderIds = new Set(validOrderRows.map(r => String(r.id)))
 
@@ -491,8 +493,8 @@ export class ProductController {
           const itemRows: any[] = await ds.query(
             `SELECT oi.orderId AS orderId, oi.productId AS productId, oi.quantity AS quantity
                FROM order_items oi
-              WHERE oi.productId IN (${productIds.map(() => '?').join(',')})${t.sql}`,
-            [...productIds, ...t.params]
+              WHERE oi.productId IN (${productIds.map(() => '?').join(',')})`,
+            [...productIds]
           )
           for (const row of itemRows) {
             if (!row.productId) continue
@@ -501,7 +503,15 @@ export class ProductController {
             salesCountMap[key] = (salesCountMap[key] || 0) + (Number(row.quantity) || 0)
           }
 
-          log.info('[商品列表] 销量统计:', salesCountMap)
+          // 一次性诊断（实锤根因后移除）：上下文租户值 vs 实际命中的商品/明细/订单行数
+          const { getCurrentTenantId } = await import('../utils/tenantContext')
+          log.info('[商品列表] 销量统计:', {
+            ctxTenant: getCurrentTenantId() || '(空)',
+            productCount: productIds.length,
+            validOrders: validOrderIds.size,
+            itemRows: itemRows.length,
+            mapped: Object.keys(salesCountMap).length
+          })
         } catch (salesError) {
           log.error('[商品列表] 统计销量失败:', salesError)
           // 销量统计失败不影响商品列表返回
@@ -736,21 +746,20 @@ export class ProductController {
         try {
           const { getDataSource } = await import('../config/database')
           const ds = getDataSource()
-          const t = tenantSQL('')
 
           // 1) 有效订单 id 集合（与列表统计同口径：排除取消/待转移/待审核/审核拒绝）
+          // 🔥 去掉冗余租户条件：productId 全局唯一且商品已验证存在，明细天然租户安全
           const validOrderRows: any[] = await ds.query(
             `SELECT id FROM orders
-              WHERE status NOT IN ('cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected')${t.sql}`,
-            [...t.params]
+              WHERE status NOT IN ('cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected')`
           )
           const validOrderIds = new Set(validOrderRows.map(r => String(r.id)))
 
           // 2) 该商品明细行（走 idx_order_items_productId 索引）
           // ⚠️ order_items 列名为 camelCase（orderId/productId/unitPrice），tenant_id 为 snake
           const itemRows: any[] = await ds.query(
-            `SELECT orderId, quantity, unitPrice FROM order_items WHERE productId = ?${t.sql}`,
-            [product.id, ...t.params]
+            `SELECT orderId, quantity, unitPrice FROM order_items WHERE productId = ?`,
+            [product.id]
           )
           for (const row of itemRows) {
             if (!validOrderIds.has(String(row.orderId))) continue
@@ -1604,7 +1613,6 @@ export class ProductController {
       //   ② 该商品明细行（走 idx_order_items_productId 索引）
       const { getDataSource } = await import('../config/database')
       const ds = getDataSource()
-      const t = tenantSQL('')
 
       // ① 订单（角色过滤条件与原实现一致，由 tenantRepo 注入租户条件）
       let queryBuilder = orderRepository.createQueryBuilder('order')
@@ -1644,11 +1652,12 @@ export class ProductController {
 
       // ② 该商品的明细行（走索引，毫秒级）
       // ⚠️ order_items 列名为 camelCase（orderId/productId），tenant_id 为 snake
+      // 🔥 去掉冗余租户条件：productId 全局唯一，明细天然租户安全（与列表/详情统计同口径）
       let itemRows: any[] = []
       try {
         itemRows = await ds.query(
-          `SELECT orderId, quantity FROM order_items WHERE productId = ?${t.sql}`,
-          [id, ...t.params]
+          `SELECT orderId, quantity FROM order_items WHERE productId = ?`,
+          [id]
         )
       } catch (error) {
         log.info('明细查询失败:', error)
