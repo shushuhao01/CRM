@@ -253,11 +253,12 @@
               <img :src="product.image || '/default-product.png'" :alt="product.name" />
             </div>
             <div class="product-info">
-              <div class="product-name">
-                <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" class="product-type-tag">虚拟</el-tag>
-                <el-tag v-else size="small" effect="light" class="product-type-tag">实物</el-tag>
-                <span class="product-name-text">{{ product.name }}</span>
-              </div>
+              <el-tooltip :content="product.name" placement="top" :show-after="300" :disabled="!nameOverflowIds.has(product.id)">
+                <div class="product-name" :ref="(el) => setProductNameRef(product.id, el)">
+                  <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" class="product-type-tag">虚拟</el-tag>
+                  <el-tag v-else size="small" effect="light" class="product-type-tag">实物</el-tag>{{ product.name }}
+                </div>
+              </el-tooltip>
               <div class="product-price-stock">
                 <span class="product-price" v-if="product.skuType && product.skuType !== 'none' && product.minPrice">¥{{ product.minPrice }}<template v-if="product.minPrice !== product.maxPrice"> - ¥{{ product.maxPrice }}</template></span>
                 <span class="product-price" v-else>¥{{ product.price }}</span>
@@ -906,7 +907,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElImageViewer } from 'element-plus'
 import {
@@ -2244,6 +2245,25 @@ const loadExpressCompanies = async () => {
   }
 }
 
+// 商品名称两行截断溢出检测：溢出时悬浮显示完整名称
+const nameOverflowIds = ref<Set<string>>(new Set())
+const productNameEls = new Map<string, HTMLElement>()
+const setProductNameRef = (id: string, el: any) => {
+  if (el) productNameEls.set(id, el)
+  else productNameEls.delete(id)
+}
+const checkNameOverflow = () => {
+  const ids = new Set<string>()
+  productNameEls.forEach((el, id) => {
+    if (el && el.scrollHeight > el.clientHeight + 1) ids.add(id)
+  })
+  nameOverflowIds.value = ids
+}
+const handleWindowResizeForName = () => checkNameOverflow()
+watch(filteredProducts, () => nextTick(checkNameOverflow))
+onMounted(() => window.addEventListener('resize', handleWindowResizeForName))
+onUnmounted(() => window.removeEventListener('resize', handleWindowResizeForName))
+
 onMounted(async () => {
   // 🔥 首先加载系统配置（包括优惠折扣设置），确保全局生效
   try {
@@ -2513,31 +2533,27 @@ onMounted(async () => {
 .product-name {
   font-weight: 600;
   color: #303133;
-  display: flex;
-  align-items: center;
-  gap: 4px;
   text-align: left;
   margin-bottom: 6px;
-}
-.product-name-text {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
+  padding-top: 2px;
+  line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.4;
 }
-/* 标识与名称同字号（14px），同轴线且大小一致 */
+/* 标识内联在第一行行首，名称换行后从左侧顶格开始 */
 .product-type-tag {
   height: 22px;
   padding: 0 7px;
   font-size: 14px;
   line-height: 20px;
   border-radius: 4px;
-  flex-shrink: 0;
+  font-weight: 400;
+  margin-right: 4px;
+  vertical-align: middle;
+  position: relative;
+  top: -2px;
 }
 
 .product-price-stock {
