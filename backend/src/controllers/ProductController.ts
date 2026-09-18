@@ -1607,12 +1607,22 @@ export class ProductController {
       // 获取订单数据（需要根据用户角色过滤）🔥 使用租户感知仓储
       const { Order } = await import('../entities/Order')
       const orderRepository = getTenantRepo(Order)
+      // 🔥 性能根治 v2：v1 用 orders 主表 leftJoinAndSelect orderItems + where orderItems.productId 过滤，
+      // 与列表销量统计同款的「JOIN orders 方向」查询——生产实测该方向 JOIN 因排序规则不匹配等因素
+      // 索引失效（单 id 也要 3 秒+），且本接口无熔断，是详情页点开即把低配服务器打挂的元凶。
+      // 改为两条无 JOIN 单表查询 + 内存交集，语义与原实现完全等价：
+      //   ① 角色范围内订单（只取 id/status/createdAt 三列）
+      //   ② 该商品明细行（走 idx_order_items_productId 索引）
+      const { getDataSource } = await import('../config/database')
+      const ds = getDataSource()
+      const t = tenantSQL('')
+
+      // ① 订单（角色过滤条件与原实现一致，由 tenantRepo 注入租户条件）
       let queryBuilder = orderRepository.createQueryBuilder('order')
-        .leftJoinAndSelect('order.orderItems', 'orderItems')
-        .where('orderItems.productId = :productId', { productId: id })
+        .select(['order.id', 'order.status', 'order.createdAt'])
 
       // 根据用户角色应用数据范围过滤
-      // 🔥 修复：使用 Order 实体中实际存在的列名（createdBy / createdByDepartmentId）
+      // 🔥 使用 Order 实体中实际存在的列名（createdBy / createdByDepartmentId）
       const userRole = currentUser?.role || ''
       const userId = currentUser?.id
       const departmentId = currentUser?.departmentId
@@ -1635,16 +1645,35 @@ export class ProductController {
         queryBuilder = queryBuilder.andWhere('order.createdBy = :userId', { userId })
       }
 
-      // 由于订单表结构可能不同，这里使用模拟数据
-      // 实际项目中应该根据真实的订单表结构来查询
-      let orders: any[] = []
+      let allOrders: any[] = []
       try {
-        orders = await queryBuilder.getMany()
+        allOrders = await queryBuilder.getMany()
       } catch (error) {
-        // 如果查询失败（可能是表结构不匹配），使用空数组
         log.info('订单查询失败，使用模拟数据:', error)
-        orders = []
+        allOrders = []
       }
+
+      // ② 该商品的明细行（走索引，毫秒级）
+      let itemRows: any[] = []
+      try {
+        itemRows = await ds.query(
+          `SELECT order_id AS orderId, quantity FROM order_items WHERE product_id = ?${t.sql}`,
+          [id, ...t.params]
+        )
+      } catch (error) {
+        log.info('明细查询失败:', error)
+        itemRows = []
+      }
+      const qtyByOrderId = new Map<string, number>()
+      const productOrderIds = new Set<string>()
+      for (const row of itemRows) {
+        const oid = String(row.orderId)
+        qtyByOrderId.set(oid, Number(row.quantity) || 0)
+        productOrderIds.add(oid)
+      }
+
+      // 与原语义一致：仅统计「该商品参与」的订单
+      const orders = allOrders.filter(o => productOrderIds.has(String(o.id)))
 
       // 计算统计数据
       const now = new Date()
@@ -1663,8 +1692,8 @@ export class ProductController {
                orderDate.getFullYear() === currentYear &&
                ['shipped', 'delivered', 'completed'].includes(order.status)
       }).reduce((sum, order) => {
-        const item = order.orderItems?.find((i: any) => i.productId === id)
-        return sum + (item?.quantity || 1)
+        const qty = qtyByOrderId.get(String(order.id))
+        return sum + (qty === undefined ? 1 : qty)
       }, 0)
 
       // 库存周转率（简化计算：月销量 / 平均库存 * 100）
