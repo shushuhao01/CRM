@@ -728,49 +728,37 @@ export class ProductController {
       // 统计销量
       let salesCount = 0
       let salesAmount = 0
-      // 🔥 性能开关：销量统计需对 order.products 做前导通配符 LIKE（用不上索引，只能全表扫描），
-      // 再把命中订单整行读入内存逐条 JSON.parse。订单量大时在 2核2G 环境开销显著，
-      // 不使用销量的场景（如商品编辑页）传 ?withStats=0 可直接跳过这次扫描。
+      // 🔥 性能开关：不使用销量的场景（如商品编辑页）传 ?withStats=0 可直接跳过统计。
+      // v3：弃用 order.products 前导通配 LIKE（全表扫描）+ 逐单 JSON.parse 的旧方案，
+      // 与列表/getProductStats 统一走 order_items 权威明细（历史数据已回填），两条单表查询 + 内存聚合，毫秒级。
       const withStats = String(req.query.withStats ?? '1') !== '0'
       if (withStats) {
         try {
-          const { Order } = await import('../entities/Order')
-          const orderRepo = getTenantRepo(Order)
-          const idStr = String(product.id)
-          // 🔥 性能优化：在数据库层用 LIKE 粗筛"仅包含该商品的订单"，
-          // 避免加载全部订单到内存 + 逐单 JSON.parse，导致 2核2G 低配环境并发查看详情时内存/CPU 打满崩溃
-          const validOrders = await orderRepo
-            .createQueryBuilder('order')
-            .select(['order.id', 'order.products'])
-            .where('order.status NOT IN (:...excludeStatuses)', {
-              excludeStatuses: ['cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected']
-            })
-            .andWhere(
-              '(order.products LIKE :p1 OR order.products LIKE :p2 OR order.products LIKE :p3 OR order.products LIKE :p4)',
-              {
-                p1: `%"productId":${idStr}%`,
-                p2: `%"productId":"${idStr}"%`,
-                p3: `%"id":${idStr}%`,
-                p4: `%"id":"${idStr}"%`
-              }
-            )
-            .getMany()
-          validOrders.forEach((order: any) => {
-            try {
-              const prods = typeof order.products === 'string' ? JSON.parse(order.products) : order.products
-              if (Array.isArray(prods)) {
-                prods.forEach((p: any) => {
-                  const pid = String(p.productId || p.id || '')
-                  const qty = Number(p.quantity || 0)
-                  const price = Number(p.price || 0)
-                  if (pid === product.id || pid === String(product.id)) {
-                    salesCount += qty
-                    salesAmount += qty * price
-                  }
-                })
-              }
-            } catch (_) { /* ignore */ }
-          })
+          const { getDataSource } = await import('../config/database')
+          const ds = getDataSource()
+          const t = tenantSQL('')
+
+          // 1) 有效订单 id 集合（与列表统计同口径：排除取消/待转移/待审核/审核拒绝）
+          const validOrderRows: any[] = await ds.query(
+            `SELECT id FROM orders
+              WHERE status NOT IN ('cancelled', 'pending_transfer', 'pending_audit', 'audit_rejected')${t.sql}`,
+            [...t.params]
+          )
+          const validOrderIds = new Set(validOrderRows.map(r => String(r.id)))
+
+          // 2) 该商品明细行（走 idx_order_items_productId 索引）
+          // ⚠️ order_items 列名为 camelCase（orderId/productId/unitPrice），tenant_id 为 snake
+          const itemRows: any[] = await ds.query(
+            `SELECT orderId, quantity, unitPrice FROM order_items WHERE productId = ?${t.sql}`,
+            [product.id, ...t.params]
+          )
+          for (const row of itemRows) {
+            if (!validOrderIds.has(String(row.orderId))) continue
+            const qty = Number(row.quantity) || 0
+            salesCount += qty
+            // unitPrice 为下单时快照单价；历史行可能为空，按 0 计（不影响销量件数）
+            salesAmount += qty * (Number(row.unitPrice) || 0)
+          }
         } catch (e) {
           log.error('[商品详情] 统计销量失败:', e)
         }

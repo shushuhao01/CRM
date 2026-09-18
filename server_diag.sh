@@ -105,4 +105,38 @@ echo "========== 9. MySQL 版本(确认 MAX_EXECUTION_TIME 是否生效) =======
 $M "SELECT VERSION();" 2>/dev/null
 
 echo ""
+echo "========== 11. 部署版本与运行时销量审计(实锤API销量0根因) =========="
+echo "--- 11.1 dist 中的 ProductController.js ---"
+PC_FILE=$(find dist -name 'ProductController.js' 2>/dev/null | head -1)
+if [ -n "$PC_FILE" ]; then
+  echo "文件: $PC_FILE"
+  ls -la "$PC_FILE" | awk '{print "mtime:", $6, $7, $8}'
+  echo "--- 11.2 dist 特征检查 ---"
+  C1=$(grep -c 'oi.productId AS productId' "$PC_FILE" 2>/dev/null)
+  C2=$(grep -c '销量统计' "$PC_FILE" 2>/dev/null)
+  C3=$(grep -c 'unitPrice FROM order_items' "$PC_FILE" 2>/dev/null)
+  echo "列表列名修复特征(≥1为有): $C1"
+  echo "列表统计日志特征(≥1为有): $C2"
+  echo "详情v3统计特征(order_items口径,≥1为有): $C3"
+  if [ "${C1:-0}" -ge 1 ] && [ "${C2:-0}" -ge 1 ]; then
+    echo "=> dist 包含列名修复版代码"
+  else
+    echo "=> ⚠️ dist 是旧代码！本地最新构建后重新上传 dist 并 pm2 restart all"
+  fi
+else
+  echo "未找到 dist 下的 ProductController.js！"
+fi
+echo "--- 11.3 运行时日志: 列表销量统计实际结果(winston info级) ---"
+if [ -f logs/combined.log ]; then
+  grep '销量统计' logs/combined.log 2>/dev/null | tail -3
+  [ ${PIPESTATUS[0]} -ne 0 ] && echo "(combined.log 中无「销量统计」记录 => 生产代码未执行统计段或 dist 为旧版)"
+else
+  echo "(backend/logs/combined.log 不存在, PM2 cwd 可能不在 backend 目录)"
+fi
+echo "--- 11.4 运行时日志: 统计失败记录 ---"
+grep '统计销量失败' logs/combined.log logs/error.log 2>/dev/null | tail -5
+echo "--- 11.5 combined.log 最后修改时间(判断日志新鲜度) ---"
+ls -la logs/combined.log 2>/dev/null | awk '{print $6, $7, $8}'
+
+echo ""
 echo "诊断完成。请将本页完整输出发回给开发。"
