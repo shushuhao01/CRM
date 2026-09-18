@@ -1477,6 +1477,19 @@ const loadProductInfo = async () => {
 /**
  * 加载库存记录
  */
+/** 调整原因英文枚举转中文（未知值原样返回，兼容自定义文本） */
+const reasonText = (reason?: string | null): string => {
+  if (!reason) return ''
+  const map: Record<string, string> = {
+    purchase: '采购入库',
+    sale: '销售出库',
+    inventory: '盘点调整',
+    loss: '损耗报废',
+    other: '其他'
+  }
+  return map[reason] || reason
+}
+
 const loadStockRecords = async () => {
   try {
     const productId = route.params.id as string
@@ -1493,7 +1506,7 @@ const loadStockRecords = async () => {
       type: a.adjustType || 'set',
       quantity: a.quantity,
       stockAfter: a.afterStock ?? '-',
-      reason: a.reason || '',
+      reason: reasonText(a.reason),
       operator: a.operatorName || '系统',
       remark: a.remark || (a.skuName ? `SKU: ${a.skuName}` : ''),
       createTime: a.createdAt ? new Date(a.createdAt).toLocaleString('zh-CN') : '-',
@@ -1831,7 +1844,7 @@ const loadOperationLogs = async () => {
           id: `adj_${a.id}`,
           operator: a.operatorName || '系统',
           action: typeMap[a.adjustType] || '库存变动',
-          detail: `${a.skuName ? `[${a.skuName}] ` : ''}数量: ${a.quantity}，${a.beforeStock} → ${a.afterStock}${a.reason ? `，原因: ${a.reason}` : ''}`,
+          detail: `${a.skuName ? `[${a.skuName}] ` : ''}数量: ${a.quantity}，${a.beforeStock} → ${a.afterStock}${a.reason ? `，原因: ${reasonText(a.reason)}` : ''}`,
           createTime: a.createdAt || ''
         })
       })

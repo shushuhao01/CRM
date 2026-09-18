@@ -254,9 +254,9 @@
             </div>
             <div class="product-info">
               <div class="product-name">
-                <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
-                <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
-                {{ product.name }}
+                <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" class="product-type-tag">虚拟</el-tag>
+                <el-tag v-else size="small" effect="light" class="product-type-tag">实物</el-tag>
+                <span class="product-name-text">{{ product.name }}</span>
               </div>
               <div class="product-price-stock">
                 <span class="product-price" v-if="product.skuType && product.skuType !== 'none' && product.minPrice">¥{{ product.minPrice }}<template v-if="product.minPrice !== product.maxPrice"> - ¥{{ product.maxPrice }}</template></span>
@@ -2513,15 +2513,31 @@ onMounted(async () => {
 .product-name {
   font-weight: 600;
   color: #303133;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-align: left;
+  margin-bottom: 6px;
+}
+.product-name-text {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
-  max-height: 2.8em;
-  text-align: center;
-  margin-bottom: 6px;
+}
+/* 标识与名称同字号（14px），同轴线且大小一致 */
+.product-type-tag {
+  height: 22px;
+  padding: 0 7px;
+  font-size: 14px;
+  line-height: 20px;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
 
 .product-price-stock {
