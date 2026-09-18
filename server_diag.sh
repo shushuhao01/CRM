@@ -89,6 +89,18 @@ $M_SHOW "SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME, COLLATION_NAME FROM
 $M_SHOW "SELECT TABLE_NAME, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA='${DB_NAME}' AND TABLE_NAME IN ('order_items','orders','product_skus','product_spec_groups');" 2>/dev/null
 
 echo ""
+echo "========== 10. 销量数据源审计(order_items覆盖与租户分布) =========="
+echo "--- orders 租户分布 ---"
+$M_SHOW "SELECT tenant_id, COUNT(*) AS cnt FROM orders GROUP BY tenant_id ORDER BY cnt DESC LIMIT 5;" 2>/dev/null
+echo "--- order_items 租户分布 ---"
+$M_SHOW "SELECT tenant_id, COUNT(*) AS cnt FROM order_items GROUP BY tenant_id ORDER BY cnt DESC LIMIT 5;" 2>/dev/null
+echo "--- order_items 中 tenant_id 为 NULL/空 的行数 ---"
+$M_SHOW "SELECT COUNT(*) AS null_tenant_rows FROM order_items WHERE tenant_id IS NULL OR tenant_id='';" 2>/dev/null
+echo "--- 已送达订单中在 order_items 有明细的覆盖数 ---"
+$M_SHOW "SELECT COUNT(DISTINCT o.id) AS delivered_with_items FROM orders o INNER JOIN order_items oi ON oi.orderId=o.id WHERE o.status='delivered';" 2>/dev/null
+$M_SHOW "SELECT COUNT(*) AS delivered_total FROM orders WHERE status='delivered';" 2>/dev/null
+
+echo ""
 echo "========== 9. MySQL 版本(确认 MAX_EXECUTION_TIME 是否生效) =========="
 $M "SELECT VERSION();" 2>/dev/null
 

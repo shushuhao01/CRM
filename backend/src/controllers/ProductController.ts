@@ -487,10 +487,11 @@ export class ProductController {
           const validOrderIds = new Set(validOrderRows.map(r => String(r.id)))
 
           // 2) 拉回相关明细行（走 idx_order_items_productId 索引），内存中按有效订单过滤并聚合
+          // ⚠️ order_items 列名为 camelCase（orderId/productId），tenant_id 为 snake，与实体定义一致
           const itemRows: any[] = await ds.query(
-            `SELECT order_id AS orderId, product_id AS productId, quantity
-               FROM order_items
-              WHERE product_id IN (${productIds.map(() => '?').join(',')})${t.sql}`,
+            `SELECT oi.orderId AS orderId, oi.productId AS productId, oi.quantity AS quantity
+               FROM order_items oi
+              WHERE oi.productId IN (${productIds.map(() => '?').join(',')})${t.sql}`,
             [...productIds, ...t.params]
           )
           for (const row of itemRows) {
@@ -1654,10 +1655,11 @@ export class ProductController {
       }
 
       // ② 该商品的明细行（走索引，毫秒级）
+      // ⚠️ order_items 列名为 camelCase（orderId/productId），tenant_id 为 snake
       let itemRows: any[] = []
       try {
         itemRows = await ds.query(
-          `SELECT order_id AS orderId, quantity FROM order_items WHERE product_id = ?${t.sql}`,
+          `SELECT orderId, quantity FROM order_items WHERE productId = ?${t.sql}`,
           [id, ...t.params]
         )
       } catch (error) {
