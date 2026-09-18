@@ -759,4 +759,10 @@ onMounted(() => {
     }
   }
 }
+
+/* 深色模式：翻页控件区域适配 */
+html.dark .message-pagination {
+  background-color: var(--crm-dark-card);
+  border-top-color: var(--crm-dark-border-light);
+}
 </style>

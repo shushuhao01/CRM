@@ -228,8 +228,8 @@
               </div>
               <div class="product-info">
                 <div class="product-name">
-                  <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px;">虚拟</el-tag>
-                  <el-tag v-else size="small" effect="light" style="margin-right: 4px;">实物</el-tag>
+                  <el-tag v-if="product.productType === 'virtual'" type="warning" size="small" effect="light" style="margin-right: 4px; vertical-align: top;">虚拟</el-tag>
+                  <el-tag v-else size="small" effect="light" style="margin-right: 4px; vertical-align: top;">实物</el-tag>
                   {{ product.name }}
                 </div>
                 <div class="product-price-stock">
