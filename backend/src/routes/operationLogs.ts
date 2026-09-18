@@ -103,35 +103,48 @@ router.get('/order-timeline/:orderId', async (req: Request, res: Response) => {
       tenantParams.push(tenantId);
     }
 
-    // Union operation_logs + order_status_history
-    const sql = `
-      (
-        SELECT id, action AS log_type, description AS content, user_name AS operator_name,
-               created_at, 'operation' AS source
-        FROM operation_logs
-        WHERE module = 'order' AND resource_id = ? ${tenantWhere}
-      )
-      UNION ALL
-      (
-        SELECT id, COALESCE(actionType, 'status_change') AS log_type,
-               CONCAT(COALESCE(notes, ''), CASE WHEN status IS NOT NULL THEN CONCAT(' [状态: ', status, ']') ELSE '' END) AS content,
-               COALESCE(operatorName, '系统') AS operator_name,
-               createdAt AS created_at, 'status_history' AS source
-        FROM order_status_history
-        WHERE orderId = ? ${tenantWhere}
-          -- 自动流转在合并时间线中由 operation_logs(action='auto_transfer') 呈现，
-          -- status_history 的同动作行会与之重复，故排除（历史数据同样生效）
-          AND (actionType IS NULL OR actionType <> 'auto_transfer')
-      )
-      ORDER BY created_at DESC
-      LIMIT ? OFFSET ?
-    `;
+    // 两表分别查询后在内存合并去重（避免相关子查询在无索引的 operation_logs 上引发全表扫描）
+    const opRows: any[] = await AppDataSource.query(
+      `SELECT id, action AS log_type, description AS content, user_name AS operator_name,
+              created_at, 'operation' AS source
+       FROM operation_logs
+       WHERE module = 'order' AND resource_id = ? ${tenantWhere}`,
+      [orderId, ...tenantParams]
+    ).catch(() => []);
 
-    const params = [orderId, ...tenantParams, orderId, ...tenantParams, limit + 1, offset];
-    const rows = await AppDataSource.query(sql, params).catch(() => []);
+    const historyRows: any[] = (
+      await AppDataSource.query(
+        `SELECT id, actionType AS log_type, notes AS content, status AS status_code, COALESCE(operatorName, '系统') AS operator_name,
+                createdAt AS created_at, 'status_history' AS source
+         FROM order_status_history
+         WHERE orderId = ? ${tenantWhere}`,
+        [orderId, ...tenantParams]
+      ).catch(() => [])
+    ).map((r: any) => ({
+      ...r,
+      // 保持与原 SQL CONCAT 一致的展示格式：备注 + [状态: xxx]（随后统一翻译为中文）
+      content: `${r.content || ''}${r.status_code ? ` [状态: ${r.status_code}]` : ''}`
+    }));
 
-    const hasMore = rows.length > limit;
-    const list = rows.slice(0, limit).map((row: any) => {
+    // 🔥 统一去重：同一事件（创建/编辑/提审/审核/取消/发货/签收/自动流转等）会同时写
+    // operation_logs 与 order_status_history 两张表，时间线只保留 operation_logs 一条。
+    // 状态历史行需「动作在双写名单内 且 ±2秒内存在对应操作日志」才视为重复；
+    // virtual_delivery、auto_sync、实时同步（actionType 为空）等只写状态历史的动作始终保留。
+    const twinnedActionTypes = new Set([
+      'auto_transfer', 'create', 'edit', 'submit_audit',
+      'audit_approve', 'audit_reject', 'cancel_request', 'cancel_approve', 'cancel_reject',
+      'status_change'
+    ]);
+    const opTimes = opRows.map((r: any) => new Date(r.created_at).getTime());
+    const isDuplicate = (row: any) =>
+      twinnedActionTypes.has(row.log_type) &&
+      opTimes.some((t: number) => Math.abs(t - new Date(row.created_at).getTime()) <= 2000);
+
+    const merged = [...opRows, ...historyRows.filter((r: any) => !isDuplicate(r))]
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const hasMore = merged.length > offset + limit;
+    const list = merged.slice(offset, offset + limit).map((row: any) => {
       let content = row.content || '';
       if (row.source === 'status_history') {
         content = content.replace(/\[状态: (\w+)\]/g, (_: string, s: string) => `[状态: ${translateStatus(s)}]`);
@@ -140,7 +153,7 @@ router.get('/order-timeline/:orderId', async (req: Request, res: Response) => {
       content = translateLogContent(content);
       return {
         id: row.id,
-        logType: row.log_type,
+        logType: row.log_type || 'status_change',
         content,
         operatorName: row.operator_name || '系统',
         createdAt: row.created_at,
@@ -148,19 +161,9 @@ router.get('/order-timeline/:orderId', async (req: Request, res: Response) => {
       };
     });
 
-    // Count total
-    const countSql = `
-      SELECT (
-        (SELECT COUNT(*) FROM operation_logs WHERE module = 'order' AND resource_id = ? ${tenantWhere})
-        +
-        (SELECT COUNT(*) FROM order_status_history WHERE order_id = ? ${tenantWhere} AND (actionType IS NULL OR actionType <> 'auto_transfer'))
-      ) AS total
-    `;
-    const countResult = await AppDataSource.query(countSql, [orderId, ...tenantParams, orderId, ...tenantParams]).catch(() => [{ total: 0 }]);
-
     return res.json({
       success: true,
-      data: { list, total: countResult[0]?.total || 0, hasMore }
+      data: { list, total: merged.length, hasMore }
     });
   } catch (error: any) {
     log.error('[操作日志] 获取订单审计轨迹失败:', error.message);
