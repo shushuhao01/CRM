@@ -82,7 +82,20 @@ function parseProducts(raw) {
   const timeCol = colSet.has('createdAt') ? 'createdAt' : (colSet.has('created_at') ? 'created_at' : null);
   console.log(`orders 时间列: ${timeCol || '(未找到，回填行不写订单时间)'}`);
 
-  // 2) 已有明细的订单（幂等跳过集合）
+  // 2) 探测 order_items 的时间列（orders 为 created_at，明细表列名可能不同或不存在）
+  const [oiCols] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='order_items'`,
+    [env.DB_DATABASE]
+  );
+  const oiColSet = new Set(oiCols.map(r => r.COLUMN_NAME));
+  const oiTimeCol = oiColSet.has('created_at') ? 'created_at' : (oiColSet.has('createdAt') ? 'createdAt' : null);
+  console.log(`order_items 时间列: ${oiTimeCol || '(不存在，回填行不写时间)'}`);
+
+  const insCols = ['tenant_id', 'productId', 'orderId', 'productName', 'quantity', 'unitPrice', 'subtotal', 'productImage', 'sku_id', 'sku_name'];
+  if (oiTimeCol) insCols.push(oiTimeCol);
+  const insHead = `INSERT INTO order_items (${insCols.join(', ')}) VALUES ?`;
+
+  // 3) 已有明细的订单（幂等跳过集合）
   const [existing] = await pool.query(`SELECT DISTINCT orderId FROM order_items`);
   const doneOrders = new Set(existing.map(r => String(r.orderId)));
   console.log(`order_items 已覆盖订单数: ${doneOrders.size}`);
@@ -100,17 +113,15 @@ function parseProducts(raw) {
       if (doneOrders.has(oid)) { skipped++; continue; }
       const items = parseProducts(o.products);
       if (items.length === 0) { noProducts++; continue; }
-      const values = items.map(it => [
-        o.tenant_id || null, it.productId, oid, it.productName, it.quantity,
-        it.unitPrice.toFixed(2), it.subtotal, it.productImage, it.skuId, it.skuName,
-        o.createdAt || null,
-      ]);
-      const [ret] = await pool.query(
-        `INSERT INTO order_items
-           (tenant_id, productId, orderId, productName, quantity, unitPrice, subtotal, productImage, sku_id, sku_name, createdAt)
-         VALUES ?`,
-        [values]
-      );
+      const values = items.map(it => {
+        const row = [
+          o.tenant_id || null, it.productId, oid, it.productName, it.quantity,
+          it.unitPrice.toFixed(2), it.subtotal, it.productImage, it.skuId, it.skuName,
+        ];
+        if (oiTimeCol) row.push(o.createdAt || null);
+        return row;
+      });
+      const [ret] = await pool.query(insHead, [values]);
       insertedRows += ret.affectedRows;
     }
     offset += PAGE;
