@@ -812,7 +812,9 @@ const canShare = computed(() => {
 const salesUsers = computed(() => {
   console.log('[CustomerShare] userStore.users:', userStore.users.length)
   const filtered = userStore.users.filter(u =>
-    ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role)
+    ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role) &&
+    u.status === 'active' && // 仅限启用账号（排除禁用/锁定/离职）
+    (u.employmentStatus ?? 'active') === 'active' // 排除已离职成员
   ).map(u => ({
     id: u.id,
     name: u.name,
