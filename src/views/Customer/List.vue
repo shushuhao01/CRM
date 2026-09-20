@@ -157,13 +157,13 @@
             </el-form-item>
           </el-col>
           <el-col :span="4">
-            <el-form-item label="订单数≥">
+            <el-form-item label="订单数">
               <el-input-number
                 v-model="searchForm.orderCountMin"
                 :min="0"
                 :step="1"
                 step-strictly
-                placeholder="输入数字"
+                placeholder="0=未下单"
                 controls-position="right"
                 style="width: 140px"
                 @change="handleSearch"
@@ -640,7 +640,7 @@ const searchForm = reactive({
   dateRange: [] as string[],  // 明确指定类型，确保初始化为空数组
   departmentId: '',  // 🔥 新增：部门筛选
   createdBy: '',  // 🔥 新增：创建人筛选
-  orderCountMin: undefined as number | undefined  // 🔥 新增：订单数筛选（undefined=全部，0=筛选0单，N=筛选≥N单）
+  orderCountMin: undefined as number | undefined  // 🔥 订单数筛选（undefined=全部，N=有效订单数正好N，0=未下单客户）
 })
 
 // 统计数据

@@ -27,6 +27,10 @@ function getLatestAddress(address: string | null | undefined): string {
 }
 import { v4 as uuidv4 } from 'uuid';
 
+// 🔥 无效订单状态：订单数筛选/统计口径统一排除这些状态（已取消、审核拒绝、物流退回、物流取消、退款等）
+// 「订单数」列、顶部「未下单客户数」、订单数筛选三处口径必须一致
+const EXCLUDED_ORDER_STATUSES = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded'];
+
 export function registerCoreRoutes(router: Router) {
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -230,19 +234,23 @@ router.get('/', async (req: Request, res: Response) => {
     // 🔥 性能优化：统计未下单客户数
     // 修复1：使用 LEFT JOIN + IS NULL 替代 NOT IN 子查询（性能更优，尤其在大数据量场景）
     // 修复2：添加租户隔离条件（o.tenant_id = customer.tenant_id），防止跨租户数据泄露
+    // 修复3：排除无效状态订单，与订单数筛选口径一致（只有已取消/退款等无效单的客户也算未下单）
     const noOrderCustomers = await statsQueryBuilder.clone()
-      .leftJoin('orders', 'o_stat', 'o_stat.customer_id = customer.id AND o_stat.tenant_id = customer.tenant_id')
+      .leftJoin(
+        'orders',
+        'o_stat',
+        'o_stat.customer_id = customer.id AND o_stat.tenant_id = customer.tenant_id AND o_stat.status NOT IN (:...excludedStatuses)',
+        { excludedStatuses: EXCLUDED_ORDER_STATUSES }
+      )
       .andWhere('o_stat.id IS NULL')
       .getCount();
 
-    // 🔥 新增：按订单数筛选客户（统计之后再应用，避免groupBy污染统计数据）
+    // 🔥 按订单数筛选客户（统计之后再应用，避免groupBy污染统计数据）
+    // 语义为「=」：输入 N → 有效订单数正好 N；输入 0 → 未下单客户（无有效订单）
     const orderCountMinValue = orderCountMin !== undefined ? parseInt(orderCountMin as string) : undefined;
     if (orderCountMinValue !== undefined && !isNaN(orderCountMinValue)) {
-      // 排除无效状态订单（已取消、审核拒绝、物流退回、物流取消、退款等）
-      const excludedStatuses = ['pending_cancel', 'cancelled', 'audit_rejected', 'logistics_returned', 'logistics_cancelled', 'refunded'];
-
       if (orderCountMinValue === 0) {
-        // 筛选0单客户
+        // 筛选0单客户（无有效订单）
         // 🔥 性能修复：原来先 DISTINCT 全量拉有单客户ID再 NOT IN（订单量大时ID列表巨大，SQL又长又慢）
         // 改为 LEFT JOIN + IS NULL 反连接，数据库侧完成，走 customer_id 索引
         queryBuilder
@@ -250,16 +258,16 @@ router.get('/', async (req: Request, res: Response) => {
             'orders',
             'o_zero',
             'o_zero.customer_id = customer.id AND o_zero.tenant_id = customer.tenant_id AND o_zero.status NOT IN (:...excludedStatuses)',
-            { excludedStatuses }
+            { excludedStatuses: EXCLUDED_ORDER_STATUSES }
           )
           .andWhere('o_zero.id IS NULL');
       } else {
-        // 筛选≥N单客户
+        // 筛选有效订单数正好 =N 的客户
         queryBuilder
           .leftJoin('orders', 'o_min', 'o_min.customer_id = customer.id AND o_min.tenant_id = customer.tenant_id')
-          .andWhere('o_min.status NOT IN (:...excludedStatuses)', { excludedStatuses })
+          .andWhere('o_min.status NOT IN (:...excludedStatuses)', { excludedStatuses: EXCLUDED_ORDER_STATUSES })
           .addGroupBy('customer.id')
-          .having('COUNT(o_min.id) >= :orderCountMin', { orderCountMin: orderCountMinValue });
+          .having('COUNT(o_min.id) = :orderCountExact', { orderCountExact: orderCountMinValue });
       }
     }
 
@@ -277,6 +285,7 @@ router.get('/', async (req: Request, res: Response) => {
     const salesPersonIds = [...new Set(customers.map(c => c.salesPersonId).filter(Boolean))] as string[];
 
     // 批量查询1：所有客户的订单数统计
+    // 🔥 排除无效状态订单，与订单数筛选口径一致（否则筛出「=1」的客户，列上可能显示2）
     const orderCountMap: Record<string, number> = {};
     if (customerIds.length > 0) {
       try {
@@ -285,6 +294,7 @@ router.get('/', async (req: Request, res: Response) => {
           .select('order.customerId', 'customerId')
           .addSelect('COUNT(*)', 'count')
           .where('order.customerId IN (:...ids)', { ids: customerIds })
+          .andWhere('order.status NOT IN (:...excludedStatuses)', { excludedStatuses: EXCLUDED_ORDER_STATUSES })
           .groupBy('order.customerId')
           .getRawMany();
         orderCounts.forEach((item: any) => {
