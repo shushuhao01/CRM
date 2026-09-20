@@ -1,4 +1,4 @@
-﻿<!-- eslint-disable vue/multi-word-component-names -->
+<!-- eslint-disable vue/multi-word-component-names -->
 <template>
   <div class="order-audit">
     <!-- 页面头部 -->
@@ -1134,20 +1134,23 @@ const selectedOrders = ref<AuditOrder[]>([])
 const selectAll = ref(false)
 
 // 销售人员列表 - 从userStore获取真实用户数据
-// 🔥 【修复】过滤掉禁用用户，只显示启用的用户
+// 🔥 不过滤状态：离职、未启用人员名下也有历史订单，筛选时需要能看到（离职/停用加后缀标注）
 const salesUserList = computed(() => {
   return userStore.users
     .filter(u => {
-      // 检查用户是否启用（禁用用户不显示）
-      const isEnabled = !u.status || u.status === 'active'
       const hasValidRole = ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role)
-      return isEnabled && hasValidRole
+      return hasValidRole
     })
-    .map(u => ({
-      id: u.id,
-      name: (u as any).realName || u.name || (u as any).username,
-      department: u.department || '未分配'
-    }))
+    .map(u => {
+      const base = (u as any).realName || u.name || (u as any).username
+      const resigned = (u as any).employmentStatus === 'resigned' || u.status === 'resigned'
+      const disabled = u.status === 'inactive' || u.status === 'locked'
+      return {
+        id: u.id,
+        name: resigned ? `${base}（已离职）` : disabled ? `${base}（已停用）` : base,
+        department: u.department || '未分配'
+      }
+    })
 })
 
 // 计算属性

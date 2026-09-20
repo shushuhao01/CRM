@@ -696,6 +696,15 @@ const loadFilterDepartments = async () => {
 }
 
 // 🔥 新增：加载筛选用的创建人列表（根据角色调对应接口）
+// 不过滤状态：离职、未启用人员名下也有历史客户，超管筛选时需要能看到
+// 离职/停用人员在下拉中加后缀标注，便于区分历史人员
+const formatCreatorName = (u: any) => {
+  const base = u.realName || u.name || u.username || ''
+  if (u.employmentStatus === 'resigned' || u.status === 'resigned') return `${base}（已离职）`
+  if (u.status === 'inactive' || u.status === 'locked') return `${base}（已停用）`
+  return base
+}
+
 const loadFilterCreators = async () => {
   try {
     const role = userStore.currentUser?.role
@@ -732,7 +741,7 @@ const loadFilterCreators = async () => {
       if (items.length > 0) {
         filterCreators.value = items.map((u: any) => ({
           id: u.id,
-          name: u.realName || u.name || u.username || '',
+          name: formatCreatorName(u),
           department: u.departmentName || u.department || ''
         }))
         console.log('[CustomerList] 创建人筛选列表已加载:', filterCreators.value.length, '个，接口:', endpoint)
@@ -741,13 +750,13 @@ const loadFilterCreators = async () => {
     }
 
     // 🔥 API 失败或无数据时，兜底使用 userStore.users（已在 onMounted 中加载）
+    // 不过滤状态：离职、禁用人员名下也有历史客户，超管筛选时需要能看到
     console.warn('[CustomerList] API 创建人数据为空，使用 userStore.users 兜底，共', userStore.users.length, '个')
     if (userStore.users.length > 0) {
       filterCreators.value = userStore.users
-        .filter(u => u.status === 'active' || !u.status)
         .map(u => ({
           id: u.id,
-          name: u.name || u.realName || u.username || '',
+          name: formatCreatorName(u),
           department: u.departmentName || u.department || ''
         }))
       console.log('[CustomerList] 创建人筛选列表（userStore兜底）:', filterCreators.value.length, '个')
@@ -758,7 +767,7 @@ const loadFilterCreators = async () => {
     if (userStore.users.length > 0) {
       filterCreators.value = userStore.users.map(u => ({
         id: u.id,
-        name: u.name || u.realName || u.username || '',
+        name: formatCreatorName(u),
         department: u.departmentName || u.department || ''
       }))
       console.log('[CustomerList] 创建人筛选列表（异常兜底）:', filterCreators.value.length, '个')
@@ -809,9 +818,23 @@ const canShare = computed(() => {
 })
 
 // 销售人员数据 - 从用户列表动态加载
+// 🔥 不过滤状态：此列表同时服务姓名映射（当前归属/导出/创建人显示），
+// 离职、禁用人员名下的历史客户仍需正确显示姓名，不能显示为「未分配」
 const salesUsers = computed(() => {
-  console.log('[CustomerShare] userStore.users:', userStore.users.length)
   const filtered = userStore.users.filter(u =>
+    ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role)
+  ).map(u => ({
+    id: u.id,
+    name: u.name,
+    department: u.department || '未分配部门',
+    role: u.role
+  }))
+  return filtered
+})
+
+// 🔥 分享候选专用：仅限在职且启用的账号（排除禁用/锁定/离职），分享只能转给可接手的人
+const shareCandidateUsers = computed(() => {
+  return userStore.users.filter(u =>
     ['sales_staff', 'department_manager', 'admin', 'super_admin'].includes(u.role) &&
     u.status === 'active' && // 仅限启用账号（排除禁用/锁定/离职）
     (u.employmentStatus ?? 'active') === 'active' // 排除已离职成员
@@ -821,8 +844,6 @@ const salesUsers = computed(() => {
     department: u.department || '未分配部门',
     role: u.role
   }))
-  console.log('[CustomerShare] 可分享的销售人员:', filtered.length)
-  return filtered
 })
 
 // 权限检查
@@ -1607,7 +1628,7 @@ const userSearchKeyword = ref('')
 const filteredSalesUsers = computed(() => {
   if (!currentShareCustomer.value) return []
 
-  let users = salesUsers.value.filter(u => u.id !== currentShareCustomer.value?.salesPersonId)
+  let users = shareCandidateUsers.value.filter(u => u.id !== currentShareCustomer.value?.salesPersonId)
 
   if (userSearchKeyword.value) {
     const keyword = userSearchKeyword.value.toLowerCase()
@@ -1713,7 +1734,7 @@ const confirmShare = async () => {
     const result = await customerShareApi.shareCustomer(shareRequest)
 
     if (result.success) {
-      const targetUser = salesUsers.value.find(user => user.id === shareForm.targetUserId)
+      const targetUser = shareCandidateUsers.value.find(user => user.id === shareForm.targetUserId)
       const timeLimitText = shareForm.timeLimit === 0 ? '永久' : `${shareForm.timeLimit}天`
 
       ElMessage.success(`客户 ${customer.name} 已成功分享给 ${targetUser?.name || '目标用户'}，时间限制：${timeLimitText}`)

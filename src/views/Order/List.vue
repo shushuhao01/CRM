@@ -1029,14 +1029,12 @@ const loadPaymentMethods = async () => {
 }
 
 // 销售人员数据 - 从userStore获取真实用户
-// 🔥 【修复】过滤掉禁用用户，只显示启用的用户
+// 🔥 不过滤状态：离职、禁用人员名下的历史订单仍需正确显示销售人员姓名，不能显示为「未分配」
 const salesUsers = computed(() => {
   return userStore.users
     .filter((u: any) => {
-      // 检查用户是否启用（禁用用户不显示）
-      const isEnabled = !u.status || u.status === 'active'
       const hasValidRole = ['sales_staff', 'department_manager', 'admin', 'super_admin', 'customer_service'].includes(u.role)
-      return isEnabled && hasValidRole
+      return hasValidRole
     })
     .map((u: any) => ({
       id: u.id,
@@ -1045,14 +1043,18 @@ const salesUsers = computed(() => {
     }))
 })
 
-// 🔥 销售人员列表 - 用于筛选（与订单列表的销售人员映射一致）
+// 🔥 销售人员筛选列表：包含离职、未启用人员（历史订单的归属人），离职人员加后缀标注
 const salesUserList = computed(() => {
   return userStore.users
-    .filter((u: any) => !u.status || u.status === 'active')
-    .map((u: any) => ({
-      id: u.id,
-      name: u.realName || u.name || u.username
-    }))
+    .map((u: any) => {
+      const base = u.realName || u.name || u.username
+      const resigned = u.employmentStatus === 'resigned' || u.status === 'resigned'
+      const disabled = u.status === 'inactive' || u.status === 'locked'
+      return {
+        id: u.id,
+        name: resigned ? `${base}（已离职）` : disabled ? `${base}（已停用）` : base
+      }
+    })
 })
 
 // 获取销售人员姓名
