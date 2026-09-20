@@ -1276,6 +1276,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { User, DataAnalysis, Search, Phone, ChatDotRound, Edit, ShoppingCart, Plus, ArrowLeft, EditPen, ShoppingBag, RefreshLeft, Clock, Money, InfoFilled, ArrowDown, ArrowUp, Message, DocumentAdd, Download, Share, Delete } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useOrderStore } from '@/stores/order'
+import { useTabsStore } from '@/stores/tabs'
 import { useServiceStore } from '@/stores/service'
 import { useCustomerStore } from '@/stores/customer'
 import { useCallStore } from '@/stores/call'
@@ -1299,6 +1300,7 @@ import CustomerPortrait from './Detail/CustomerPortrait.vue'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const tabsStore = useTabsStore()
 const customerFieldConfigStore = useCustomerFieldConfigStore()
 
 // 自定义字段展示
@@ -3298,6 +3300,11 @@ const loadCustomerDetail = async () => {
     }
 
     console.log('找到客户信息:', customer)
+
+    // 🔥 动态更新标签页标题：客户姓名 + 客户详情（如「张三客户详情」）
+    if (customer.name) {
+      tabsStore.updateTabTitle(route.path, `${customer.name}客户详情`)
+    }
 
     // 获取负责销售人员信息
     // 🔥 优先使用后端返回的名字，如果没有再从userStore查找

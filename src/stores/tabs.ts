@@ -36,7 +36,7 @@ export const useTabsStore = defineStore('tabs', () => {
         ...tab,
         closable: tab.name !== '/dashboard'
       })
-      
+
       // 添加到缓存视图
       if (tab.component && !cachedViews.value.includes(tab.component)) {
         cachedViews.value.push(tab.component)
@@ -74,7 +74,7 @@ export const useTabsStore = defineStore('tabs', () => {
   const removeOtherTabs = (keepName: string) => {
     const keepTab = tabs.value.find(tab => tab.name === keepName)
     const dashboardTab = tabs.value.find(tab => tab.name === '/dashboard')
-    
+
     // 清空缓存视图，只保留需要保留的
     cachedViews.value = []
     if (dashboardTab?.component) {
@@ -85,10 +85,10 @@ export const useTabsStore = defineStore('tabs', () => {
     }
 
     // 只保留首页和指定的标签页
-    tabs.value = tabs.value.filter(tab => 
+    tabs.value = tabs.value.filter(tab =>
       tab.name === '/dashboard' || tab.name === keepName
     )
-    
+
     activeTab.value = keepName
   }
 
@@ -101,6 +101,14 @@ export const useTabsStore = defineStore('tabs', () => {
 
   const setActiveTab = (name: string) => {
     activeTab.value = name
+  }
+
+  // 🔥 动态更新标签页标题（如详情页数据加载后：固定标题「客户详情」→「张三客户详情」）
+  const updateTabTitle = (name: string, title: string) => {
+    const tab = tabs.value.find(t => t.name === name)
+    if (tab && tab.title !== title) {
+      tab.title = title
+    }
   }
 
   const refreshTab = (name: string) => {
@@ -150,6 +158,7 @@ export const useTabsStore = defineStore('tabs', () => {
     closeAllTabs,
     clearTabs,
     setActiveTab,
+    updateTabTitle,
     refreshTab
   }
 })

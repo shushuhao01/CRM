@@ -321,6 +321,7 @@ import { useServiceStore } from '@/stores/service'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { useUserStore } from '@/stores/user'
+import { useTabsStore } from '@/stores/tabs'
 import { createSafeNavigator } from '@/utils/navigation'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
 import { operationLogApi, type OrderTimelineItem } from '@/api/operationLog'
@@ -337,6 +338,7 @@ const customerStore = useCustomerStore()
 const notificationStore = useNotificationStore()
 const serviceStore = useServiceStore()
 const userStore = useUserStore()
+const tabsStore = useTabsStore()
 const orderFieldConfigStore = useOrderFieldConfigStore()
 
 // 响应式数据
@@ -1958,6 +1960,14 @@ const loadOrderDetail = async () => {
       orderProductType: order.orderProductType || '',
       completionSource: order.completionSource || ''
     })
+
+    // 🔥 动态更新标签页标题：客户姓名 + 订单详情（如「张三订单详情」），无客户名时回退固定标题
+    const tabCustomerName = orderDetail.customer?.name
+    if (tabCustomerName) {
+      tabsStore.updateTabTitle(route.path, `${tabCustomerName}订单详情`)
+    } else {
+      tabsStore.updateTabTitle(route.path, '订单详情')
+    }
 
     loadOrderTimeline()
     await loadAfterSalesHistory()
