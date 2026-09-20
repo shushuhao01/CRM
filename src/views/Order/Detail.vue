@@ -298,7 +298,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PhoneVerifyDialog from '@/components/Logistics/PhoneVerifyDialog.vue'
@@ -343,7 +343,8 @@ const orderFieldConfigStore = useOrderFieldConfigStore()
 
 // 响应式数据
 const loading = ref(false)
-const orderId = route.params.id as string
+// 🔥 标签页切换时 keep-alive 会复用组件实例，orderId 需跟随路由参数更新（let 以便 watch 中重新赋值）
+let orderId = route.params.id as string
 
 // 订单操作日志
 const orderLogs = ref<OrderTimelineItem[]>([])
@@ -2096,6 +2097,22 @@ onMounted(async () => {
 
   loadOrderDetail()
   loadOrderLogs()
+})
+
+// 🔥 修复：标签页切换时 keep-alive 复用组件实例（onMounted 不会重新执行），
+// 监听路由参数变化重新加载对应订单，否则切换标签后显示的仍是上一单的数据
+// （与客户详情页 Detail.vue 的同名 watch 逻辑对齐）
+watch(() => route.params.id, (newId, oldId) => {
+  if (newId && newId !== oldId) {
+    orderId = newId as string
+    orderLogs.value = []
+    orderLogsHasMore.value = false
+    orderLogsOffset.value = 0
+    afterSalesHistory.value = []
+
+    loadOrderDetail()
+    loadOrderLogs()
+  }
 })
 
 onUnmounted(() => {
