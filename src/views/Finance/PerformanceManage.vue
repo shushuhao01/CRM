@@ -842,6 +842,14 @@ const loadSalesPersons = async () => {
     return
   }
 
+  // 离职/停用人员在下拉中加后缀标注，便于区分历史归属人（value 仍是用户 id，不影响筛选）
+  const tagUser = (u: any) => {
+    const base = u.realName || u.name || u.username
+    if (u.employmentStatus === 'resigned' || u.status === 'resigned') return `${base}（已离职）`
+    if (u.status === 'inactive' || u.status === 'locked') return `${base}（已停用）`
+    return base
+  }
+
   try {
     if (isAdmin.value) {
       // 管理员加载全部用户
@@ -850,7 +858,7 @@ const loadSalesPersons = async () => {
       const users = res?.data?.items || res?.data?.users || res?.items || res?.users || res?.data?.list || res?.list || []
       allSalesPersons.value = users.map((u: any) => ({
         id: u.id,
-        name: u.realName || u.name || u.username,
+        name: tagUser(u),
         departmentId: u.departmentId
       }))
       console.log('[PerformanceManage] allSalesPersons:', allSalesPersons.value)
@@ -860,7 +868,7 @@ const loadSalesPersons = async () => {
       const members = res?.data || res || []
       allSalesPersons.value = members.map((m: any) => ({
         id: m.userId || m.id,
-        name: m.realName || m.name || m.username,
+        name: tagUser(m),
         departmentId: m.departmentId || currentUserDepartmentId.value
       }))
       console.log('[PerformanceManage] 经理加载本部门成员:', allSalesPersons.value)
