@@ -882,6 +882,18 @@ router.get('/trace/query', async (req: Request, res: Response) => {
                 notes: `[实时同步] 物流动态: "${latestDescription.substring(0, 100)}" → 物流状态: ${translateLogisticsStatus(detectedStatus)} → 订单状态: ${translateStatus(targetOrderStatus)}`,
                 operatorName: '系统实时同步'
               }));
+
+              // 🔥 补写订单日志（operation_logs）：实时同步的签收/拒收/异常等状态流转也要出现在订单日志
+              const { writeOperationLog } = await import('../../utils/operationLogWriter');
+              await writeOperationLog({
+                module: 'order',
+                resourceType: 'order',
+                resourceId: order.id,
+                action: 'auto_sync',
+                description: `[实时同步] 订单状态: ${translateStatus(oldStatus)} → ${translateStatus(targetOrderStatus)}（物流状态: ${translateLogisticsStatus(detectedStatus)}）`,
+                username: '系统',
+                tenantId: (order as any).tenantId || undefined,
+              });
             } catch (_histErr) {
               // 历史记录失败不影响主流程
             }

@@ -19,7 +19,7 @@
  */
 
 import { log } from '../config/logger';
-import { translateStatus, translateLogisticsStatus } from '../utils/operationLogWriter';
+import { translateStatus, translateLogisticsStatus, writeOperationLog } from '../utils/operationLogWriter';
 import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { OrderStatusHistory } from '../entities/OrderStatusHistory';
@@ -578,6 +578,18 @@ class LogisticsAutoSyncService {
         } catch (historyErr: any) {
           log.warn(`[物流自动同步] 保存状态历史失败(不影响主流程): ${historyErr.message}`);
         }
+
+        // 🔥 补写订单日志（operation_logs）：发货后的自动签收/拒收/异常等状态流转
+        // 也要出现在「订单日志」里，否则订单日志在发货后就断了
+        writeOperationLog({
+          module: 'order',
+          resourceType: 'order',
+          resourceId: order.id,
+          action: 'auto_sync',
+          description: `[自动同步] 订单状态: ${translateStatus(oldOrderStatus)} → ${translateStatus(targetOrderStatus)}（物流状态: ${translateLogisticsStatus(effectiveLogisticsStatus)}，动态: "${description.substring(0, 60)}"）`,
+          username: '系统',
+          tenantId: order.tenantId || undefined,
+        }).catch(() => { });
       }
 
       // 记录详情

@@ -225,7 +225,11 @@ defineEmits<{
 
 // 虚拟商品订单默认折叠物流卡片
 const logisticsCollapsedLocal = ref(props.orderProductType === 'virtual')
+// 订单状态轨迹：有数据时默认展开，无数据时折叠（异步加载后自动展开）
 const statusTimelineCollapsedLocal = ref(true)
+watch(() => props.orderTimeline.length, (len) => {
+  statusTimelineCollapsedLocal.value = len === 0
+}, { immediate: true })
 
 // 操作类型标签样式
 const getActionTagType = (actionType: string) => {

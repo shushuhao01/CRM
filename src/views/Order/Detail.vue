@@ -608,6 +608,24 @@ const loadOrderTimeline = async () => {
         operator: history.operator || '系统',
         actionType: history.actionType || 'status_change'
       }))
+
+      // 🔥 旧订单兼容：状态历史严重缺失（≤1条，如只剩一条自动流转）时，
+      // 用当前状态合成的完整流转链补全缺失节点（真实历史记录优先保留）
+      if (statusHistory.length <= 1) {
+        const synthesized = generateTimelineFromStatus()
+        const realPriorities = new Set(statusHistory.map((h: any) => ORDER_STATUS_PRIORITY[h.status] ?? 0))
+        const maxRealPriority = Math.max(...realPriorities, 0)
+        const missing = synthesized.filter((s: any) => {
+          const p = s.priority ?? 0
+          // 只补全订单已越过的阶段，且真实历史中没有同阶段的记录
+          return p <= maxRealPriority && !realPriorities.has(p)
+        })
+        if (missing.length > 0) {
+          orderTimeline.value = [...orderTimeline.value, ...missing]
+          console.log(`[订单详情] 状态历史缺失，已补全 ${missing.length} 个流转节点`)
+        }
+      }
+
       console.log(`[订单详情] 加载到 ${orderTimeline.value.length} 条状态历史`)
     } else {
       // 🔥 如果没有状态历史，根据订单当前状态生成完整轨迹
@@ -635,6 +653,34 @@ const loadOrderTimeline = async () => {
       orderTimeline.value = generateTimelineFromStatus()
     }
   }
+}
+
+// 状态优先级映射（用于生成合成轨迹与判断订单已流转到哪个阶段）
+const ORDER_STATUS_PRIORITY: Record<string, number> = {
+  'pending_transfer': 0,
+  'pending': 0,
+  'draft': 0,
+  'pending_audit': 1,
+  'audit_rejected': 1,
+  'pending_cancel': 2,
+  'cancel_failed': 2,
+  'pending_shipment': 2,
+  'approved': 2,
+  'shipped': 3,
+  'in_transit': 3,
+  'out_for_delivery': 3,
+  'rejected': 3,
+  'rejected_returned': 3,
+  'logistics_returned': 3,
+  'logistics_cancelled': 3,
+  'package_exception': 3,
+  'abnormal': 3,
+  'delivered': 4,
+  'signed': 4,
+  'completed': 4,
+  'refunded': 4,
+  'closed': 4,
+  'cancelled': 0
 }
 
 /**
@@ -680,42 +726,14 @@ const generateTimelineFromStatus = () => {
     }
   }
 
-  // 状态优先级映射
-  const statusPriority: Record<string, number> = {
-    'pending_transfer': 0,
-    'pending': 0,
-    'draft': 0,
-    'pending_audit': 1,
-    'audit_rejected': 1,
-    'pending_cancel': 2,
-    'cancel_failed': 2,
-    'pending_shipment': 2,
-    'approved': 2,
-    'shipped': 3,
-    'in_transit': 3,
-    'out_for_delivery': 3,
-    'rejected': 3,
-    'rejected_returned': 3,
-    'logistics_returned': 3,
-    'logistics_cancelled': 3,
-    'package_exception': 3,
-    'abnormal': 3,
-    'delivered': 4,
-    'signed': 4,
-    'completed': 4,
-    'refunded': 4,
-    'closed': 4,
-    'cancelled': 0
-  }
-
-  const currentPriority = statusPriority[currentStatus] ?? 0
+  const currentPriority = ORDER_STATUS_PRIORITY[currentStatus] ?? 0
 
   // 生成已经过的状态轨迹
   const baseTime = new Date(orderDetail.createTime || new Date())
   const creatorName = orderDetail.createdByName || '销售员'
 
   for (const step of statusFlow) {
-    const stepPriority = statusPriority[step.status] ?? 0
+    const stepPriority = ORDER_STATUS_PRIORITY[step.status] ?? 0
 
     if (stepPriority <= currentPriority) {
       // 计算时间（每个状态间隔一些时间）
@@ -739,6 +757,8 @@ const generateTimelineFromStatus = () => {
       }
 
       timeline.push({
+        status: step.status,
+        priority: stepPriority,
         timestamp: timestamp.toISOString(),
         type: getTimelineType(step.status),
         icon: getTimelineIcon(step.status),
@@ -768,6 +788,8 @@ const generateTimelineFromStatus = () => {
   const special = specialStatusNode[currentStatus]
   if (special) {
     timeline.push({
+      status: currentStatus,
+      priority: ORDER_STATUS_PRIORITY[currentStatus] ?? 0,
       timestamp: orderDetail.updateTime || new Date().toISOString(),
       type: getTimelineType(currentStatus),
       icon: special.icon,

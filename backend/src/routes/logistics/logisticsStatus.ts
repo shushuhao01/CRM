@@ -350,6 +350,17 @@ router.post('/order/status', async (req, res) => {
       ...userInfo,
     });
 
+    // 🔥 补写订单日志（module=order）：订单详情「订单日志」只聚合 module=order 的记录，
+    // 发货后手动标记签收/拒收/异常等也要在订单日志里可见
+    writeOperationLog({
+      module: 'order',
+      resourceType: 'order',
+      resourceId: order.id,
+      action: 'status_change',
+      description: `手动更新订单状态: ${translateStatus(oldStatus)} → ${translateStatus(newStatus)}${remark ? `，备注：${remark}` : ''}`,
+      ...userInfo,
+    });
+
     // 🔥 根据物流状态发送通知
     const orderInfo = {
       id: order.id,
@@ -446,6 +457,7 @@ router.post('/order/batch-status', async (req, res) => {
         }
 
         // 更新物流状态
+        const oldOrderStatus = order.status;
         order.logisticsStatus = newStatus;
 
         // 🔥 修复：直接使用新状态，不再映射成cancelled
@@ -481,7 +493,17 @@ router.post('/order/batch-status', async (req, res) => {
           resourceType: 'order',
           resourceId: order.id,
           action: 'status_change',
-          description: `批量更新订单状态: → ${translateStatus(newStatus)}`,
+          description: `批量更新订单状态: ${translateStatus(oldOrderStatus)} → ${translateStatus(newStatus)}`,
+          ...batchUserInfo,
+        });
+
+        // 🔥 补写订单日志（module=order）：订单详情「订单日志」只聚合 module=order 的记录
+        writeOperationLog({
+          module: 'order',
+          resourceType: 'order',
+          resourceId: order.id,
+          action: 'status_change',
+          description: `批量更新订单状态: ${translateStatus(oldOrderStatus)} → ${translateStatus(newStatus)}${remark ? `，备注：${remark}` : ''}`,
           ...batchUserInfo,
         });
 
