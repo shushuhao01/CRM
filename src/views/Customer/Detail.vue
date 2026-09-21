@@ -1286,6 +1286,8 @@ import { permissionService, CallPermissionType } from '@/services/permission'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
 import { SensitiveInfoType } from '@/services/permission'
 import { copyToClipboard } from '@/utils/customerCode'
+// 等级归一化：旧数据可能是 normal/vip/svip 等，编辑表单下拉只认 bronze/silver/gold/diamond
+import { normalizeLevelValue } from '@/utils/customerLevel'
 import CreateTemplateDialog from '@/components/CreateTemplateDialog.vue'
 import SendSmsDialog from '@/components/SendSmsDialog.vue'
 import { createSafeNavigator } from '@/utils/navigation'
@@ -2017,6 +2019,8 @@ const handleEdit = () => {
   isEditing.value = true
   const { customFields, ...rest } = customerInfo.value
   Object.assign(editForm, rest)
+  // 旧数据等级可能是 normal 等，归一化为下拉选项值，否则 el-select 会显示原始值
+  editForm.level = normalizeLevelValue(editForm.level || '')
   editForm.customFields = { ...(customFields || {}) }
   // 确保 checkbox 类型字段初始化为数组
   for (const field of displayCustomFields.value) {
@@ -2032,6 +2036,8 @@ const startEdit = () => {
   isEditing.value = true
   const { customFields, ...rest } = customerInfo.value
   Object.assign(editForm, rest)
+  // 旧数据等级可能是 normal 等，归一化为下拉选项值，否则 el-select 会显示原始值
+  editForm.level = normalizeLevelValue(editForm.level || '')
   editForm.customFields = { ...(customFields || {}) }
   for (const field of displayCustomFields.value) {
     if (field.fieldType === 'checkbox' && !Array.isArray(editForm.customFields[field.fieldKey])) {
@@ -2055,7 +2061,7 @@ const getLevelClass = (level: string) => {
 const getLevelType = (level: string) => {
   const levelMap: Record<string, string> = {
     'bronze': '',
-    'silver': 'info',
+    'silver': 'success',
     'gold': 'warning',
     'diamond': 'danger',
     // 兼容旧数据

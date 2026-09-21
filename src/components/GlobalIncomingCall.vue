@@ -168,7 +168,8 @@ defineEmits<{
 }>()
 
 const getLevelType = (level: string) => {
-  const map: Record<string, string> = { normal: '', silver: 'info', gold: 'warning', diamond: 'success' }
+  // 钻石对齐全局 scheme 用红色，避免与银牌浅绿撞色
+  const map: Record<string, string> = { normal: '', silver: 'success', gold: 'warning', diamond: 'danger' }
   return map[level] || ''
 }
 

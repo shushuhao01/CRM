@@ -355,6 +355,8 @@ import { useUserStore } from '@/stores/user'
 import { useCustomerStore } from '@/stores/customer'
 import { getProvinces, getCitiesByProvince, getDistrictsByCity, getStreetsByDistrict, loadAddressData } from '@/utils/addressData'
 import { displaySensitiveInfo as displaySensitiveInfoNew } from '@/utils/sensitiveInfo'
+// 等级归一化：旧数据可能是 normal 等，表单下拉只认 bronze/silver/gold/diamond
+import { normalizeLevelValue } from '@/utils/customerLevel'
 import { SensitiveInfoType } from '@/services/permission'
 import { customerTagApi, type CustomerTag } from '@/api/customerTags'
 import { createSafeNavigator } from '@/utils/navigation'
@@ -430,7 +432,7 @@ const customerForm = reactive({
   medicalHistory: '',
   improvementGoals: [],
   otherGoals: '',
-  level: 'normal',
+  level: 'bronze',
   source: 'online',
   tags: [],
   salesPerson: '',
@@ -657,7 +659,8 @@ const loadCustomerDetail = async () => {
       medicalHistory: customer.medicalHistory || '',
       improvementGoals: customer.improvementGoals || [],
       otherGoals: customer.otherGoals || '',
-      level: customer.level || 'normal',
+      // 旧数据等级可能是 normal 等，归一化为下拉选项值，否则 el-select 会显示原始值
+      level: normalizeLevelValue(customer.level || ''),
       source: customer.source || 'online',
       tags: customer.tags || [],
       salesPerson: customer.salesPersonId || '',

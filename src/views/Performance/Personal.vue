@@ -1632,10 +1632,11 @@ const getCustomerLevelType = (level: string) => {
   const typeMap: Record<string, string> = {
     bronze: '',
     normal: '',
-    silver: 'info',
+    silver: 'success',
     gold: 'warning',
     platinum: 'primary',
-    diamond: 'success'
+    // 钻石对齐全局 scheme 用红色，避免与银牌浅绿撞色
+    diamond: 'danger'
   }
   return typeMap[level] || ''
 }

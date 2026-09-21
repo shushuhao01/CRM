@@ -22,7 +22,7 @@ describe('getLevelLabel', () => {
 describe('getLevelType', () => {
   test('gold → warning', () => expect(getLevelType('gold')).toBe('warning'))
   test('diamond → danger', () => expect(getLevelType('diamond')).toBe('danger'))
-  test('silver → info', () => expect(getLevelType('silver')).toBe('info'))
+  test('silver → success', () => expect(getLevelType('silver')).toBe('success'))
   test('未知 → 空字符串', () => expect(getLevelType('unknown')).toBe(''))
 })
 

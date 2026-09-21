@@ -160,7 +160,7 @@
           <template #default="{ row }">
             <el-tag v-if="row.level === 'diamond'" type="danger">钻石</el-tag>
             <el-tag v-else-if="row.level === 'gold'" type="warning">金牌</el-tag>
-            <el-tag v-else-if="row.level === 'silver'" type="info">银牌</el-tag>
+            <el-tag v-else-if="row.level === 'silver'" type="success">银牌</el-tag>
             <el-tag v-else type="">铜牌</el-tag>
           </template>
         </el-table-column>

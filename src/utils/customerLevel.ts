@@ -19,8 +19,8 @@ export const CUSTOMER_LEVEL_CONFIG = {
   [CustomerLevel.SILVER]: {
     label: '银牌客户',
     value: 'silver',
-    type: 'info',
-    color: '#909399'
+    type: 'success',
+    color: '#67C23A'
   },
   [CustomerLevel.GOLD]: {
     label: '金牌客户',

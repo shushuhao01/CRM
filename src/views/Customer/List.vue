@@ -1020,7 +1020,7 @@ const customerList = computed(() => {
 const getLevelType = (level: string) => {
   const types: Record<string, string> = {
     bronze: '',
-    silver: 'info',
+    silver: 'success',
     gold: 'warning',
     diamond: 'danger',
     // 兼容旧数据

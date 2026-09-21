@@ -5,7 +5,7 @@
 export const getLevelType = (level: string): string => {
   const levelMap: Record<string, string> = {
     'bronze': '',
-    'silver': 'info',
+    'silver': 'success',
     'gold': 'warning',
     'diamond': 'danger',
     'normal': '',

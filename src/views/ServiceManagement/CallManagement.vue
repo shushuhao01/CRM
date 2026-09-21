@@ -1986,9 +1986,10 @@ const handleCurrentChange = (page: number) => {
 const getLevelType = (level: string) => {
   const levelMap: Record<string, string> = {
     'normal': '',
-    'silver': 'info',
+    'silver': 'success',
     'gold': 'warning',
-    'diamond': 'success'
+    // 钻石对齐全局 scheme 用红色，避免与银牌浅绿撞色
+    'diamond': 'danger'
   }
   return levelMap[level] || ''
 }
