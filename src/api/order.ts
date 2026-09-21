@@ -123,10 +123,11 @@ export const orderApi = {
     api.get<Order[]>(API_ENDPOINTS.ORDERS.PENDING_CANCEL, { params }),
 
   // 获取待审核取消订单数量（since：上次查看时间，用于区分新增）
+  // 🔥 showError: false —— 旧版后端可能没有该端点（404），徽标统计非关键，静默失败避免全局弹窗
   getPendingCancelCount: (since?: string) =>
     api.get<{ total: number; newCount: number }>(
       API_ENDPOINTS.ORDERS.PENDING_CANCEL_COUNT,
-      { params: since ? { since } : {} }
+      { params: since ? { since } : {}, showError: false }
     ),
 
   // 审核取消订单申请
