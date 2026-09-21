@@ -251,7 +251,10 @@
     <el-card class="order-logs-card" shadow="never">
       <template #header>
         <div class="order-logs-header" @click="orderLogsExpanded = !orderLogsExpanded">
-          <span class="order-logs-title">订单日志</span>
+          <div class="order-logs-header-left">
+            <el-icon><Document /></el-icon>
+            <span>订单日志</span>
+          </div>
           <el-icon class="order-logs-arrow" :class="{ expanded: orderLogsExpanded }">
             <ArrowDown />
           </el-icon>
@@ -4076,7 +4079,8 @@ onUnmounted(() => {
 /* 订单操作日志 */
 .order-logs-card { margin-top: 16px; }
 .order-logs-header { display: flex; align-items: center; cursor: pointer; user-select: none; }
-.order-logs-title { font-size: 16px; font-weight: 600; color: #303133; }
+/* 标题样式与上方「订单状态和轨迹」「售后历史轨迹」等卡片头部保持一致 */
+.order-logs-header-left { display: flex; align-items: center; gap: 8px; }
 .order-logs-arrow { margin-left: auto; transition: transform 0.3s; color: #909399; }
 .order-logs-arrow.expanded { transform: rotate(180deg); }
 .order-logs-container { padding: 8px 0; }
