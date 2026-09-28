@@ -1,5 +1,5 @@
 <template>
-  <div v-if="canAccessHelpCenter" class="help-center-container">
+  <div v-if="canAccessHelpCenter" class="help-center-entry">
     <el-tooltip content="帮助中心" placement="bottom">
       <div class="help-center-button" @click="goToHelpCenter">
         <el-icon :size="18"><QuestionFilled /></el-icon>
@@ -28,7 +28,9 @@ const goToHelpCenter = () => {
 </script>
 
 <style scoped>
-.help-center-container {
+/* 类名用 help-center-entry，避免与帮助中心页面的 .help-center-container 撞名
+   （dark-mode.scss 对页面容器设置了深色背景，曾误命中顶栏按钮导致黑色背景） */
+.help-center-entry {
   display: flex;
   align-items: center;
 }
