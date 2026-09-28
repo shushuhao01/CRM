@@ -3402,7 +3402,8 @@ onUnmounted(() => {
 }
 
 .sign-performance {
-  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  /* 加深为饱和金橙渐变：原浅色(#a8edea→#fed6e3)上白色图标几乎看不清，与其他汇总图标视觉不一致 */
+  background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%);
 }
 
 .metric-content {

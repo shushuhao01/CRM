@@ -2377,7 +2377,8 @@ onUnmounted(() => {
 }
 
 .sign-performance {
-  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  /* 与团队业绩页同步加深：浅色背景上白色图标看不清 */
+  background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%);
 }
 
 .metric-content {
