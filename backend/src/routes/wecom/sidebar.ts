@@ -2748,15 +2748,81 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
       String(now.getSeconds()).padStart(2, '0') +
       String(Math.floor(Math.random() * 1000)).padStart(3, '0');
 
-    // 查询客户信息用于填充订单
+    // 查询客户信息用于填充订单 + 下单限制检查（显式 tenantId 条件，侧边栏无租户上下文也保证隔离）
     let customerName = req.body.customerName || '';
     let customerPhone = req.body.customerPhone || '';
-    if ((!customerName || !customerPhone) && customerId) {
+    let customerRecord: any = null;
+    if (customerId) {
       try {
         const { Customer } = await import('../../entities/Customer');
-        const cust = await AppDataSource.getRepository(Customer).findOne({ where: { id: customerId, tenantId } });
-        if (cust) { customerName = customerName || cust.name || ''; customerPhone = customerPhone || cust.phone || ''; }
+        customerRecord = await AppDataSource.getRepository(Customer).findOne({ where: { id: String(customerId), tenantId } as any });
+        if (customerRecord) { customerName = customerName || customerRecord.name || ''; customerPhone = customerPhone || customerRecord.phone || ''; }
       } catch { /* ignore */ }
+    }
+
+    // 🔒 下单限制检查（与主应用 POST /orders 一致）：部门下单限制（次数/金额）+ 地区限制（全局限制地区 + 部门+地区限制地区）
+    const sidebarMarkType = req.body.markType || 'normal';
+    if (sidebarMarkType !== 'reserved' && sidebarMarkType !== 'return') {
+      // 客户地址输入（结构化省市区 + 地址文本兜底）
+      const regionAddr = {
+        province: customerRecord?.province,
+        city: customerRecord?.city,
+        district: customerRecord?.district,
+        addressTexts: [customerRecord?.address, customerRecord?.detailAddress, customerRecord?.overseasAddress, receiverAddress],
+      };
+
+      // 查下单人所属部门（显式 tenantId 条件）
+      let crmUserDepartmentId = '';
+      try {
+        const { User } = await import('../../entities/User');
+        const crmUser = await AppDataSource.getRepository(User).findOne({ where: { id: String(userId), tenantId } as any });
+        if (crmUser?.departmentId) crmUserDepartmentId = String(crmUser.departmentId);
+      } catch (e: any) {
+        log.warn('[Sidebar] 查询下单人部门失败（跳过部门限制）:', e.message);
+      }
+
+      // 1) 全局限制地区客户下单
+      try {
+        const { checkRegionRestriction } = await import('../../utils/regionRestriction');
+        const regionCheck = await checkRegionRestriction('order', tenantId, regionAddr);
+        if (!regionCheck.allowed) {
+          log.warn(`⚠️ [Sidebar] 地区下单限制: ${regionCheck.message}`);
+          return res.status(400).json({ success: false, message: regionCheck.message, limitType: regionCheck.limitType });
+        }
+      } catch (e: any) {
+        log.warn('[Sidebar] 地区限制检查失败（放行）:', e.message);
+      }
+
+      // 2) 部门下单限制（次数/最低/单笔/累计，复用主应用检查函数）+ 3) 部门+地区限制
+      if (crmUserDepartmentId) {
+        // 2) 部门下单限制：侧边栏无租户上下文，用 TenantContextManager.run 显式构造上下文保证 getTenantRepo 隔离
+        try {
+          const { checkDepartmentOrderLimit } = await import('../orders/orderHelpers');
+          const { TenantContextManager } = await import('../../utils/tenantContext');
+          const limitCheck = await TenantContextManager.run(
+            { tenantId, userId: String(userId) },
+            () => checkDepartmentOrderLimit(crmUserDepartmentId, String(customerId), Number(totalAmount) || 0)
+          );
+          if (!limitCheck.allowed) {
+            log.warn(`⚠️ [Sidebar] 部门下单限制: ${limitCheck.message}`);
+            return res.status(400).json({ success: false, message: limitCheck.message, limitType: limitCheck.limitType });
+          }
+        } catch (e: any) {
+          log.warn('[Sidebar] 部门下单限制检查失败（放行）:', e.message);
+        }
+
+        // 3) 部门+地区下单限制
+        try {
+          const { checkDepartmentRegionRestriction } = await import('../../utils/regionRestriction');
+          const deptRegionCheck = await checkDepartmentRegionRestriction(tenantId, crmUserDepartmentId, regionAddr);
+          if (!deptRegionCheck.allowed) {
+            log.warn(`⚠️ [Sidebar] 部门地区下单限制: ${deptRegionCheck.message}`);
+            return res.status(400).json({ success: false, message: deptRegionCheck.message, limitType: deptRegionCheck.limitType });
+          }
+        } catch (e: any) {
+          log.warn('[Sidebar] 部门地区限制检查失败（放行）:', e.message);
+        }
+      }
     }
 
     // 判断订单商品类型
@@ -2856,6 +2922,20 @@ router.post('/sidebar/customers', authenticateSidebarToken, async (req: Request,
     // 检查手机号是否存在
     const existing = await customerRepo.findOne({ where: { phone, tenantId } });
     if (existing) return res.status(400).json({ success: false, message: '该手机号已存在客户', data: existing });
+
+    // 🔒 地区限制检查：限制地区客户创建客户资料（侧边栏建户仅有地址文本，走文本兜底匹配）
+    try {
+      const { checkRegionRestriction } = await import('../../utils/regionRestriction');
+      const regionCheck = await checkRegionRestriction('customer', tenantId, {
+        addressTexts: [address],
+      });
+      if (!regionCheck.allowed) {
+        log.warn(`⚠️ [Sidebar] 地区建户限制: ${regionCheck.message}`);
+        return res.status(400).json({ success: false, message: regionCheck.message, limitType: regionCheck.limitType });
+      }
+    } catch (e: any) {
+      log.warn('[Sidebar] 地区建户限制检查失败（放行）:', e.message);
+    }
 
     const custData: any = {
       tenantId, name, phone, gender: gender || '',

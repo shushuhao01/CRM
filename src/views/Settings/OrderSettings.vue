@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="order-settings-container">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -325,6 +325,96 @@
 
       <el-empty v-else description="暂无部门下单限制配置" />
     </el-card>
+
+    <!-- 部门+地区下单限制配置 -->
+    <el-card class="config-card">
+      <template #header>
+        <div class="card-header">
+          <span>部门+地区下单限制</span>
+          <el-tag type="danger" size="small">全局生效</el-tag>
+        </div>
+      </template>
+
+      <el-alert
+        type="info"
+        :closable="false"
+        style="margin-bottom: 20px;"
+      >
+        <template #title>
+          配置说明：针对指定部门设置限制地区，该部门成员为命中省市区（选省限全省/选省市限全市/选到区限该区；境外或无省市区客户按地址文本完整匹配）的客户创建订单时将被拦截。与上方部门下单限制（次数/金额）相互独立。
+        </template>
+      </el-alert>
+
+      <div style="margin-bottom: 15px;">
+        <el-button type="primary" :icon="Plus" @click="addDeptRegion">添加部门地区限制</el-button>
+      </div>
+
+      <el-table :data="departmentRegionRestrictions" style="width: 100%" v-if="departmentRegionRestrictions.length > 0">
+        <el-table-column prop="departmentName" label="部门名称" width="180" />
+        <el-table-column label="限制地区" min-width="300">
+          <template #default="{ row }">
+            <el-tag
+              v-for="reg in (row.regions || [])"
+              :key="reg.id"
+              :type="reg.isEnabled === false ? 'info' : 'danger'"
+              size="small"
+              style="margin-right: 6px; margin-bottom: 4px;"
+            >
+              {{ [reg.provinceName, reg.cityName, reg.districtName].filter(Boolean).join(' ') || '未选择' }}{{ reg.reason ? `（${reg.reason}）` : '' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="isEnabled" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.isEnabled !== false ? 'success' : 'danger'" size="small">
+              {{ row.isEnabled !== false ? '启用' : '禁用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" link @click="editDeptRegion(row)">编辑</el-button>
+            <el-button size="small" type="danger" link @click="deleteDeptRegion(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-empty v-else description="暂无部门+地区下单限制配置" />
+    </el-card>
+
+    <!-- 部门+地区下单限制编辑对话框 -->
+    <el-dialog
+      v-model="deptRegionDialogVisible"
+      title="部门+地区下单限制配置"
+      width="780px"
+      :close-on-click-modal="false"
+    >
+      <el-form label-width="90px">
+        <el-form-item label="部门" required>
+          <el-select v-model="deptRegionForm.departmentId" placeholder="请选择部门" style="width: 300px" filterable @change="onDeptRegionDeptChange">
+            <el-option v-for="dept in departmentList" :key="dept.id" :label="dept.name" :value="dept.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="启用状态">
+          <el-switch v-model="deptRegionForm.isEnabled" />
+        </el-form-item>
+      </el-form>
+
+      <el-divider content-position="left">限制地区列表</el-divider>
+      <el-button type="primary" size="small" :icon="Plus" style="margin-bottom: 10px;" @click="addDeptRegionRecord">添加地区</el-button>
+      <el-empty v-if="deptRegionForm.regions.length === 0" description="暂无限制地区，点击上方按钮添加" :image-size="60" />
+      <div v-for="(reg, index) in deptRegionForm.regions" :key="reg.id || index" class="dept-region-record">
+        <el-switch v-model="reg.isEnabled" inline-prompt active-text="启用" inactive-text="停用" />
+        <RegionPicker :model-value="reg" @update:model-value="(v) => Object.assign(reg, v)" />
+        <el-input v-model="reg.reason" placeholder="限制原因（选填，命中时随提示显示）" style="width: 220px" />
+        <el-button type="danger" link @click="deptRegionForm.regions.splice(index, 1)">删除</el-button>
+      </div>
+
+      <template #footer>
+        <el-button @click="deptRegionDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingDeptRegion" @click="saveDeptRegion">保存</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 部门下单限制编辑对话框 -->
     <el-dialog
@@ -738,6 +828,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Rank, InfoFilled } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
 import { useOrderFieldConfigStore } from '@/stores/orderFieldConfig'
+import RegionPicker from '@/components/System/RegionPicker.vue'
 
 const fieldConfigStore = useOrderFieldConfigStore()
 
@@ -1539,6 +1630,159 @@ const deleteDepartmentLimit = async (row: DepartmentLimit) => {
   }
 }
 
+// ========== 部门+地区下单限制配置 ==========
+
+interface DeptRegionRecord {
+  id?: string
+  province?: string
+  provinceName?: string
+  city?: string
+  cityName?: string
+  district?: string
+  districtName?: string
+  reason?: string
+  isEnabled?: boolean
+}
+
+interface DepartmentRegionLimit {
+  departmentId: string
+  departmentName: string
+  regions: DeptRegionRecord[]
+  isEnabled?: boolean
+}
+
+const departmentRegionRestrictions = ref<DepartmentRegionLimit[]>([])
+const deptRegionDialogVisible = ref(false)
+const savingDeptRegion = ref(false)
+const deptRegionForm = reactive<DepartmentRegionLimit>({
+  departmentId: '',
+  departmentName: '',
+  regions: [],
+  isEnabled: true
+})
+
+// 加载部门+地区限制配置
+const loadDepartmentRegionRestrictions = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/department-region-restrictions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success && Array.isArray(result.data)) {
+      departmentRegionRestrictions.value = result.data
+    }
+  } catch (error) {
+    console.error('加载部门+地区限制配置失败:', error)
+  }
+}
+
+// 添加部门地区限制（新建）
+const addDeptRegion = () => {
+  deptRegionForm.departmentId = ''
+  deptRegionForm.departmentName = ''
+  deptRegionForm.regions = []
+  deptRegionForm.isEnabled = true
+  deptRegionDialogVisible.value = true
+}
+
+// 编辑部门地区限制
+const editDeptRegion = (row: DepartmentRegionLimit) => {
+  deptRegionForm.departmentId = row.departmentId
+  deptRegionForm.departmentName = row.departmentName
+  deptRegionForm.regions = JSON.parse(JSON.stringify(row.regions || []))
+  deptRegionForm.isEnabled = row.isEnabled !== false
+  deptRegionDialogVisible.value = true
+}
+
+// 弹窗内选择部门时同步部门名称
+const onDeptRegionDeptChange = (departmentId: string) => {
+  const dept = departmentList.value.find(d => d.id === departmentId)
+  deptRegionForm.departmentName = dept?.name || ''
+}
+
+// 弹窗内添加一条限制地区记录
+const addDeptRegionRecord = () => {
+  deptRegionForm.regions.push({
+    id: `reg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    province: '', provinceName: '', city: '', cityName: '', district: '', districtName: '',
+    reason: '', isEnabled: true
+  })
+}
+
+// 保存（按部门 upsert 后全量 PUT）
+const saveDeptRegion = async () => {
+  if (!deptRegionForm.departmentId) {
+    ElMessage.warning('请选择部门')
+    return
+  }
+  const validRegions = deptRegionForm.regions.filter(r => r.province)
+  if (validRegions.length === 0) {
+    ElMessage.warning('请至少添加一条限制地区（选择省份，后面可不选以最深一级为准）')
+    return
+  }
+  try {
+    savingDeptRegion.value = true
+    const record: DepartmentRegionLimit = {
+      departmentId: deptRegionForm.departmentId,
+      departmentName: deptRegionForm.departmentName,
+      regions: validRegions,
+      isEnabled: deptRegionForm.isEnabled
+    }
+    const list = [...departmentRegionRestrictions.value]
+    const idx = list.findIndex(l => l.departmentId === record.departmentId)
+    if (idx >= 0) {
+      list[idx] = record
+    } else {
+      list.push(record)
+    }
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/department-region-restrictions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(list)
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('部门+地区下单限制保存成功')
+      deptRegionDialogVisible.value = false
+      await loadDepartmentRegionRestrictions()
+    } else {
+      ElMessage.error(result.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存部门+地区限制失败:', error)
+    ElMessage.error('保存失败')
+  } finally {
+    savingDeptRegion.value = false
+  }
+}
+
+// 删除部门地区限制
+const deleteDeptRegion = async (row: DepartmentRegionLimit) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除部门"${row.departmentName}"的地区限制配置吗？`,
+      '确认删除',
+      { type: 'warning' }
+    )
+    const list = departmentRegionRestrictions.value.filter(l => l.departmentId !== row.departmentId)
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/department-region-restrictions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(list)
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('删除成功')
+      await loadDepartmentRegionRestrictions()
+    } else {
+      ElMessage.error(result.message || '删除失败')
+    }
+  } catch { /* 用户取消 */ }
+}
+
 // 初始化支付方式表格拖拽排序
 const initPaymentMethodSortable = () => {
   setTimeout(() => {
@@ -1726,6 +1970,7 @@ onMounted(async () => {
   loadTransferConfig()
   loadDepartmentList()
   loadDepartmentLimits()
+  loadDepartmentRegionRestrictions()
   await loadPaymentMethods()
   initPaymentMethodSortable()
   loadVirtualSettings()
@@ -1866,5 +2111,17 @@ onMounted(async () => {
   padding: 10px 12px;
   border-radius: 4px;
   margin: 10px 0;
+}
+
+/* 部门+地区下单限制 */
+.dept-region-record {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--el-border-color-lighter, #e4e7ed);
+  border-radius: 8px;
 }
 </style>

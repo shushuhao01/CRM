@@ -828,10 +828,10 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     }
 
     // 🔒 租户隔离：验证客户归属当前租户，防止跨租户创建订单
+    let verifiedCustomer: Customer | null = null;
     try {
-      const { Customer } = await import('../../entities/Customer');
       const customerRepo = getTenantRepo(Customer);
-      const verifiedCustomer = await customerRepo.findOne({ where: { id: String(customerId) } });
+      verifiedCustomer = await customerRepo.findOne({ where: { id: String(customerId) } });
       if (!verifiedCustomer) {
         log.warn(`[订单创建] 客户不存在或不属于当前租户: ${customerId}`);
         return res.status(400).json({
@@ -911,6 +911,47 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
           message: limitCheck.message,
           limitType: limitCheck.limitType
         });
+      }
+    }
+
+    // 🔒 地区限制检查（限制地区客户下单 + 部门+地区下单限制；与部门限制同豁免：预约单/退货单不检查）
+    // 检查逻辑一行不动现有部门限制，仅在其旁新增地区检查
+    if (markType !== 'reserved' && markType !== 'return') {
+      try {
+        const { checkRegionRestriction, checkDepartmentRegionRestriction } = await import('../../utils/regionRestriction');
+        const regionTenantId = TenantContextManager.getTenantId() || currentUser?.tenantId || null;
+        const regionAddr = {
+          province: verifiedCustomer?.province,
+          city: verifiedCustomer?.city,
+          district: verifiedCustomer?.district,
+          // 文本兜底：客户地址文本 + 收货地址，防境外/无省市区客户钻空子
+          addressTexts: [verifiedCustomer?.address, verifiedCustomer?.detailAddress, verifiedCustomer?.overseasAddress, receiverAddress],
+        };
+
+        const regionCheck = await checkRegionRestriction('order', regionTenantId, regionAddr);
+        if (!regionCheck.allowed) {
+          log.warn(`⚠️ [订单创建] 地区下单限制: ${regionCheck.message}`);
+          return res.status(400).json({
+            success: false,
+            code: 400,
+            message: regionCheck.message,
+            limitType: regionCheck.limitType
+          });
+        }
+
+        const deptRegionCheck = await checkDepartmentRegionRestriction(regionTenantId, createdByDepartmentId, regionAddr);
+        if (!deptRegionCheck.allowed) {
+          log.warn(`⚠️ [订单创建] 部门地区下单限制: ${deptRegionCheck.message}`);
+          return res.status(400).json({
+            success: false,
+            code: 400,
+            message: deptRegionCheck.message,
+            limitType: deptRegionCheck.limitType
+          });
+        }
+      } catch (e: any) {
+        // 检查异常放行，不阻塞正常业务
+        log.warn('[订单创建] 地区限制检查失败（放行）:', e.message);
       }
     }
 

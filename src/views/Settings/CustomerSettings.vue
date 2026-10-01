@@ -147,6 +147,59 @@
       <el-empty v-else description="暂无自定义字段，点击上方【添加字段】按钮开始配置（最多10个）" />
     </el-card>
 
+    <!-- 地区限制配置（限制地区客户下单 / 限制地区客户创建客户资料） -->
+    <el-card class="config-card">
+      <template #header>
+        <div class="card-header">
+          <span>地区限制配置</span>
+          <el-tag type="warning" size="small">命中限制省市区时拦截下单/建户</el-tag>
+        </div>
+      </template>
+
+      <!-- 限制地区客户下单 -->
+      <div class="region-section">
+        <div class="region-section-header">
+          <span class="region-section-title">限制地区客户下单</span>
+          <el-button type="primary" size="small" :icon="Plus" @click="addRegionRecord('order')">添加记录</el-button>
+        </div>
+        <p class="form-tip">
+          命中已选省市区（选省限全省、选省市限全市、选到区限该区，后面可不选以已选最深处为准）的客户将无法下单；
+          境外或无省市区客户按地址文本完整匹配（省市区名称同时出现）拦截。限制原因选填，命中时随提示一并显示。
+        </p>
+        <el-empty v-if="regionOrderRestrictions.length === 0" description="暂无限制地区记录" :image-size="60" />
+        <div v-for="(rec, index) in regionOrderRestrictions" :key="rec.id || index" class="region-record">
+          <el-switch v-model="rec.isEnabled" inline-prompt active-text="启用" inactive-text="停用" />
+          <RegionPicker :model-value="rec" @update:model-value="(v) => Object.assign(rec, v)" />
+          <el-input v-model="rec.reason" placeholder="限制原因（选填，命中时随提示显示）" class="region-reason-input" />
+          <el-button type="danger" link @click="removeRegionRecord('order', index)">删除</el-button>
+        </div>
+      </div>
+
+      <el-divider />
+
+      <!-- 限制地区客户创建客户资料 -->
+      <div class="region-section">
+        <div class="region-section-header">
+          <span class="region-section-title">限制地区客户创建客户资料</span>
+          <el-button type="primary" size="small" :icon="Plus" @click="addRegionRecord('customer')">添加记录</el-button>
+        </div>
+        <p class="form-tip">
+          命中已选省市区（规则同上）的客户将无法通过新增客户创建资料（批量导入不拦截，下单时仍会检查下单限制）。
+        </p>
+        <el-empty v-if="regionCustomerRestrictions.length === 0" description="暂无限制地区记录" :image-size="60" />
+        <div v-for="(rec, index) in regionCustomerRestrictions" :key="rec.id || index" class="region-record">
+          <el-switch v-model="rec.isEnabled" inline-prompt active-text="启用" inactive-text="停用" />
+          <RegionPicker :model-value="rec" @update:model-value="(v) => Object.assign(rec, v)" />
+          <el-input v-model="rec.reason" placeholder="限制原因（选填，命中时随提示显示）" class="region-reason-input" />
+          <el-button type="danger" link @click="removeRegionRecord('customer', index)">删除</el-button>
+        </div>
+      </div>
+
+      <div class="region-save-actions">
+        <el-button type="primary" :loading="regionSaving" @click="saveRegionRestrictionsAll">保存地区限制配置</el-button>
+      </div>
+    </el-card>
+
     <!-- 保存按钮 -->
     <div class="save-actions">
       <el-button size="large" @click="resetConfig">重置配置</el-button>
@@ -267,6 +320,7 @@ import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import { useCustomerFieldConfigStore, BUILTIN_FIELDS } from '@/stores/customerFieldConfig'
+import RegionPicker from '@/components/System/RegionPicker.vue'
 
 const fieldConfigStore = useCustomerFieldConfigStore()
 
@@ -584,6 +638,89 @@ const saveConfig = async () => {
   }
 }
 
+// ========== 地区限制配置（限制地区客户下单 / 限制地区客户创建客户资料） ==========
+
+interface RegionRecord {
+  id?: string;
+  province?: string;
+  provinceName?: string;
+  city?: string;
+  cityName?: string;
+  district?: string;
+  districtName?: string;
+  reason?: string;
+  isEnabled?: boolean;
+}
+
+const regionOrderRestrictions = ref<RegionRecord[]>([])
+const regionCustomerRestrictions = ref<RegionRecord[]>([])
+const regionSaving = ref(false)
+
+const loadRegionRestrictions = async () => {
+  const token = localStorage.getItem('auth_token')
+  try {
+    const [orderRes, custRes] = await Promise.all([
+      fetch('/api/v1/system/region-restrictions/order', { headers: { 'Authorization': `Bearer ${token}` } }),
+      fetch('/api/v1/system/region-restrictions/customer', { headers: { 'Authorization': `Bearer ${token}` } })
+    ])
+    const orderResult = await orderRes.json()
+    const custResult = await custRes.json()
+    if (orderResult.success) regionOrderRestrictions.value = Array.isArray(orderResult.data) ? orderResult.data : []
+    if (custResult.success) regionCustomerRestrictions.value = Array.isArray(custResult.data) ? custResult.data : []
+  } catch (error) {
+    console.error('[客户设置] 加载地区限制配置失败:', error)
+  }
+}
+
+const addRegionRecord = (type: 'order' | 'customer') => {
+  const record: RegionRecord = {
+    id: `reg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    province: '', provinceName: '', city: '', cityName: '', district: '', districtName: '',
+    reason: '', isEnabled: true
+  }
+  if (type === 'order') {
+    regionOrderRestrictions.value.push(record)
+  } else {
+    regionCustomerRestrictions.value.push(record)
+  }
+}
+
+const removeRegionRecord = async (type: 'order' | 'customer', index: number) => {
+  try {
+    await ElMessageBox.confirm('确定要删除这条地区限制记录吗？', '确认删除', { type: 'warning' })
+    if (type === 'order') {
+      regionOrderRestrictions.value.splice(index, 1)
+    } else {
+      regionCustomerRestrictions.value.splice(index, 1)
+    }
+    ElMessage.success('已删除，请点击"保存地区限制配置"按钮生效')
+  } catch { /* 用户取消 */ }
+}
+
+const saveRegionRestrictionsAll = async () => {
+  try {
+    regionSaving.value = true
+    const token = localStorage.getItem('auth_token')
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+    const [orderRes, custRes] = await Promise.all([
+      fetch('/api/v1/system/region-restrictions/order', { method: 'PUT', headers, body: JSON.stringify(regionOrderRestrictions.value) }),
+      fetch('/api/v1/system/region-restrictions/customer', { method: 'PUT', headers, body: JSON.stringify(regionCustomerRestrictions.value) })
+    ])
+    const orderResult = await orderRes.json()
+    const custResult = await custRes.json()
+    if (orderResult.success && custResult.success) {
+      ElMessage.success('地区限制配置保存成功，已全局生效')
+    } else {
+      ElMessage.error(orderResult.message || custResult.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('[客户设置] 保存地区限制配置失败:', error)
+    ElMessage.error('保存失败，请检查网络连接')
+  } finally {
+    regionSaving.value = false
+  }
+}
+
 // 重置配置
 const resetConfig = async () => {
   try {
@@ -597,6 +734,7 @@ const resetConfig = async () => {
 onMounted(async () => {
   await fieldConfigStore.loadConfig()
   initLocalConfig()
+  loadRegionRestrictions()
   console.log('[客户设置] 页面初始化完成，自定义字段数量:', localConfig.customFields.length)
 })
 </script>
@@ -656,6 +794,44 @@ onMounted(async () => {
   justify-content: flex-end;
   gap: 10px;
   padding: 20px 0;
+}
+
+/* 地区限制配置 */
+.region-section {
+  margin-bottom: 8px;
+}
+
+.region-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.region-section-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.region-record {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--el-border-color-lighter, #e4e7ed);
+  border-radius: 8px;
+}
+
+.region-reason-input {
+  width: 260px;
+}
+
+.region-save-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 </style>
 

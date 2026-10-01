@@ -49,6 +49,12 @@ import { getTenantRepo } from '../../utils/tenantRepo';
 import { TenantContextManager } from '../../utils/tenantContext';
 import { cacheService } from '../../services/CacheService';
 import { getConfigsByGroup, saveConfigsByGroup } from './systemHelpers';
+import {
+  getRegionRestrictionConfig,
+  saveRegionRestrictionConfig,
+  getDepartmentRegionRestrictionConfig,
+  saveDepartmentRegionRestrictionConfig,
+} from '../../utils/regionRestriction';
 import path from 'path';
 import fs from 'fs';
 
@@ -205,6 +211,84 @@ router.put('/customer-field-config', authenticateToken, requireAdmin, async (req
   } catch (error) {
     log.error('保存客户字段配置失败:', error);
     res.status(500).json({ success: false, code: 500, message: '保存客户字段配置失败' });
+  }
+});
+
+// ========== 地区限制配置路由（限制地区客户下单/建户 + 部门+地区下单限制） ==========
+
+/**
+ * @route GET /api/v1/system/region-restrictions/:type
+ * @desc 获取地区限制配置（type=customer 限制建户 / type=order 限制下单）
+ * @access Private
+ */
+router.get('/region-restrictions/:type', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { type } = req.params;
+    if (type !== 'customer' && type !== 'order') {
+      return res.status(400).json({ success: false, code: 400, message: '无效的限制类型' });
+    }
+    const tenantId = TenantContextManager.getTenantId() || null;
+    const records = await getRegionRestrictionConfig(type, tenantId);
+    res.json({ success: true, code: 200, data: records });
+  } catch (error) {
+    log.error('获取地区限制配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取地区限制配置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/region-restrictions/:type
+ * @desc 保存地区限制配置（全量覆盖，仅管理员）
+ * @access Private (Admin)
+ */
+router.put('/region-restrictions/:type', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { type } = req.params;
+    if (type !== 'customer' && type !== 'order') {
+      return res.status(400).json({ success: false, code: 400, message: '无效的限制类型' });
+    }
+    const records = Array.isArray(req.body) ? req.body : [];
+    const tenantId = TenantContextManager.getTenantId() || null;
+    await saveRegionRestrictionConfig(type, tenantId, records);
+    log.info(`✅ [地区限制] ${type === 'customer' ? '限制建户' : '限制下单'}配置已保存，共 ${records.length} 条`);
+    res.json({ success: true, code: 200, message: '地区限制配置保存成功' });
+  } catch (error) {
+    log.error('保存地区限制配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '保存地区限制配置失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/system/department-region-restrictions
+ * @desc 获取部门+地区下单限制配置
+ * @access Private
+ */
+router.get('/department-region-restrictions', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const tenantId = TenantContextManager.getTenantId() || null;
+    const records = await getDepartmentRegionRestrictionConfig(tenantId);
+    res.json({ success: true, code: 200, data: records });
+  } catch (error) {
+    log.error('获取部门地区限制配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取部门地区限制配置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/department-region-restrictions
+ * @desc 保存部门+地区下单限制配置（全量覆盖，仅管理员）
+ * @access Private (Admin)
+ */
+router.put('/department-region-restrictions', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const records = Array.isArray(req.body) ? req.body : [];
+    const tenantId = TenantContextManager.getTenantId() || null;
+    await saveDepartmentRegionRestrictionConfig(tenantId, records);
+    log.info(`✅ [地区限制] 部门+地区下单限制配置已保存，共 ${records.length} 条`);
+    res.json({ success: true, code: 200, message: '部门地区限制配置保存成功' });
+  } catch (error) {
+    log.error('保存部门地区限制配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '保存部门地区限制配置失败' });
   }
 });
 

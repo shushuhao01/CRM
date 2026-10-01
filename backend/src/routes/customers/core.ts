@@ -1010,6 +1010,28 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
+    // 🔒 地区限制检查：限制地区客户创建客户资料（仅此入口拦截，批量导入客户不拦；下单时另有下单地区限制）
+    try {
+      const { checkRegionRestriction } = await import('../../utils/regionRestriction');
+      const regionCheck = await checkRegionRestriction('customer', currentTenantId, {
+        province, city, district,
+        // 文本兜底：客户地址文本，防境外/无省市区客户钻空子
+        addressTexts: [address, detailAddress, overseasAddress],
+      });
+      if (!regionCheck.allowed) {
+        log.warn(`⚠️ [创建客户] 地区限制: ${regionCheck.message}`);
+        return res.status(400).json({
+          success: false,
+          code: 400,
+          message: regionCheck.message,
+          limitType: regionCheck.limitType
+        });
+      }
+    } catch (e: any) {
+      // 检查异常放行，不阻塞正常业务
+      log.warn('[创建客户] 地区限制检查失败（放行）:', e.message);
+    }
+
     // 🔥 修复：优先使用当前登录用户的ID作为创建人和销售人员
     const finalCreatedBy = currentUserId || createdBy || salesPersonId || 'admin';
     const finalSalesPersonId = salesPersonId || currentUserId || null;
