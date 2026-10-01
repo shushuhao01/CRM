@@ -350,6 +350,11 @@
       </div>
 
       <el-table :data="departmentRegionRestrictions" style="width: 100%" v-if="departmentRegionRestrictions.length > 0">
+        <el-table-column label="启用" width="80">
+          <template #default="{ row }">
+            <el-switch v-model="row.isEnabled" @change="toggleDeptRegion(row)" />
+          </template>
+        </el-table-column>
         <el-table-column prop="departmentName" label="部门名称" width="180" />
         <el-table-column label="限制地区" min-width="300">
           <template #default="{ row }">
@@ -361,13 +366,6 @@
               style="margin-right: 6px; margin-bottom: 4px;"
             >
               {{ [reg.provinceName, reg.cityName, reg.districtName].filter(Boolean).join(' ') || '未选择' }}{{ reg.reason ? `（${reg.reason}）` : '' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="isEnabled" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.isEnabled !== false ? 'success' : 'danger'" size="small">
-              {{ row.isEnabled !== false ? '启用' : '禁用' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -1670,10 +1668,35 @@ const loadDepartmentRegionRestrictions = async () => {
     })
     const result = await response.json()
     if (result.success && Array.isArray(result.data)) {
-      departmentRegionRestrictions.value = result.data
+      // 规范化 isEnabled（undefined 视为启用，保证开关显示正确）
+      departmentRegionRestrictions.value = result.data.map(
+        (r: DepartmentRegionLimit) => ({ ...r, isEnabled: r.isEnabled !== false })
+      )
     }
   } catch (error) {
     console.error('加载部门+地区限制配置失败:', error)
+  }
+}
+
+// 列表开关切换即保存（启用才拦截，停用不拦截该部门）
+const toggleDeptRegion = async (row: DepartmentRegionLimit) => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/department-region-restrictions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(departmentRegionRestrictions.value)
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success(row.isEnabled !== false ? '已启用，该部门地区限制生效' : '已停用，该部门限制地区不再拦截')
+    } else {
+      ElMessage.error(result.message || '保存失败')
+      await loadDepartmentRegionRestrictions()
+    }
+  } catch (error) {
+    console.error('切换部门地区限制状态失败:', error)
+    await loadDepartmentRegionRestrictions()
   }
 }
 

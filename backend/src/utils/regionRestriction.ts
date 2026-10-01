@@ -231,10 +231,18 @@ const matchTexts = (addr: AddressInput, rec: RegionRecord): boolean => {
   });
 };
 
-/** 单条记录是否命中（结构化 OR 文本兜底） */
+/** 单条记录是否命中
+ *  - 客户有结构化省市区时：只走结构化匹配（客户所在地区以省市区字段为准），
+ *    避免地址文本中偶然出现限制地名（如收货地址含其他城市名）造成误拦截；
+ *  - 无结构化省市区（境外/未选省市区）时：才用地址文本兜底匹配，防止钻空子。
+ */
 const isRecordMatched = (addr: AddressInput, rec: RegionRecord): boolean => {
   if (rec.isEnabled === false) return false;
-  return matchStructured(addr, rec) || matchTexts(addr, rec);
+  const hasStructured = !!(addr.province || addr.city || addr.district);
+  if (hasStructured) {
+    return matchStructured(addr, rec);
+  }
+  return matchTexts(addr, rec);
 };
 
 /** 限制记录的显示标签（如"广东省 深圳市 南山区"） */

@@ -2150,8 +2150,9 @@ const handleSubmitOrder = async () => {
       path: '/order/list',
       query: { refresh: 'true', timestamp: Date.now().toString() }
     })
-  } catch (error) {
-    ElMessage.error('提交失败，请重试')
+  } catch (error: any) {
+    // 显示后端返回的具体原因（如：地区限制/部门下单限制拦截提示），无则通用提示（与拦截建户提示一致）
+    ElMessage.error(error?.message || '提交失败，请重试')
   } finally {
     submitting.value = false
   }

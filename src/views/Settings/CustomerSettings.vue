@@ -168,7 +168,7 @@
         </p>
         <el-empty v-if="regionOrderRestrictions.length === 0" description="暂无限制地区记录" :image-size="60" />
         <div v-for="(rec, index) in regionOrderRestrictions" :key="rec.id || index" class="region-record">
-          <el-switch v-model="rec.isEnabled" inline-prompt active-text="启用" inactive-text="停用" />
+          <el-switch v-model="rec.isEnabled" @change="saveRegionRestrictionsAll" />
           <RegionPicker :model-value="rec" @update:model-value="(v) => Object.assign(rec, v)" />
           <el-input v-model="rec.reason" placeholder="限制原因（选填，命中时随提示显示）" class="region-reason-input" />
           <el-button type="danger" link @click="removeRegionRecord('order', index)">删除</el-button>
@@ -188,7 +188,7 @@
         </p>
         <el-empty v-if="regionCustomerRestrictions.length === 0" description="暂无限制地区记录" :image-size="60" />
         <div v-for="(rec, index) in regionCustomerRestrictions" :key="rec.id || index" class="region-record">
-          <el-switch v-model="rec.isEnabled" inline-prompt active-text="启用" inactive-text="停用" />
+          <el-switch v-model="rec.isEnabled" @change="saveRegionRestrictionsAll" />
           <RegionPicker :model-value="rec" @update:model-value="(v) => Object.assign(rec, v)" />
           <el-input v-model="rec.reason" placeholder="限制原因（选填，命中时随提示显示）" class="region-reason-input" />
           <el-button type="danger" link @click="removeRegionRecord('customer', index)">删除</el-button>
@@ -665,8 +665,17 @@ const loadRegionRestrictions = async () => {
     ])
     const orderResult = await orderRes.json()
     const custResult = await custRes.json()
-    if (orderResult.success) regionOrderRestrictions.value = Array.isArray(orderResult.data) ? orderResult.data : []
-    if (custResult.success) regionCustomerRestrictions.value = Array.isArray(custResult.data) ? custResult.data : []
+    // 规范化 isEnabled（undefined 视为启用，保证开关显示正确）
+    if (orderResult.success) {
+      regionOrderRestrictions.value = (Array.isArray(orderResult.data) ? orderResult.data : []).map(
+        (r: RegionRecord) => ({ ...r, isEnabled: r.isEnabled !== false })
+      )
+    }
+    if (custResult.success) {
+      regionCustomerRestrictions.value = (Array.isArray(custResult.data) ? custResult.data : []).map(
+        (r: RegionRecord) => ({ ...r, isEnabled: r.isEnabled !== false })
+      )
+    }
   } catch (error) {
     console.error('[客户设置] 加载地区限制配置失败:', error)
   }
@@ -687,13 +696,13 @@ const addRegionRecord = (type: 'order' | 'customer') => {
 
 const removeRegionRecord = async (type: 'order' | 'customer', index: number) => {
   try {
-    await ElMessageBox.confirm('确定要删除这条地区限制记录吗？', '确认删除', { type: 'warning' })
+    await ElMessageBox.confirm('确定要删除这条地区限制记录吗？删除后将不再限制该地区。', '确认删除', { type: 'warning' })
     if (type === 'order') {
       regionOrderRestrictions.value.splice(index, 1)
     } else {
       regionCustomerRestrictions.value.splice(index, 1)
     }
-    ElMessage.success('已删除，请点击"保存地区限制配置"按钮生效')
+    await saveRegionRestrictionsAll()
   } catch { /* 用户取消 */ }
 }
 

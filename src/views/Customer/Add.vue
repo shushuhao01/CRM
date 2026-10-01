@@ -508,7 +508,7 @@
           >
             <el-input
               v-model="customerForm.detailAddress"
-              placeholder="请输入详细地址（门牌号、楼层等）"
+              placeholder="请输入详细地址（门牌号、楼层等），至少5个字符"
               clearable
               :disabled="customerForm.isOverseas"
             />
@@ -531,7 +531,7 @@
           >
             <el-input
               v-model="customerForm.overseasAddress"
-              placeholder="请输入完整的境外地址"
+              placeholder="请输入完整的境外地址，至少5个字符"
               clearable
             />
           </el-form-item>
@@ -1880,8 +1880,20 @@ const handleSubmit = async () => {
     console.error('❌ 保存客户失败:', error)
     // 🔥 如果是已由拦截器处理的错误（如授权过期弹窗），不重复显示错误提示
     if (!(error as any)?.__handled) {
+      // 表单校验失败时 element-plus reject 的是字段校验集合对象（非 Error）：
+      // 提取第一个具体校验错误（如"详细地址长度应在5-200个字符之间"），明确提示用户失败原因
+      let validateMsg = ''
+      if (error && typeof error === 'object' && !(error instanceof Error)) {
+        for (const key of Object.keys(error as Record<string, unknown>)) {
+          const errs = (error as Record<string, unknown>)[key]
+          if (Array.isArray(errs) && errs.length > 0 && (errs[0] as Error)?.message) {
+            validateMsg = (errs[0] as Error).message
+            break
+          }
+        }
+      }
       ElMessage.error({
-        message: error instanceof Error ? error.message : '添加客户失败',
+        message: error instanceof Error ? error.message : (validateMsg || '添加客户失败'),
         duration: 3000
       })
     }
