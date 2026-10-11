@@ -10,6 +10,7 @@ import packagesRoutes from './packages';
 import paymentRoutes from './payment';
 import licenseQueryRoutes from './license-query';
 import websiteConfigRoutes from './website-config';
+import siteRoutes from './site';
 import versionCheckRoutes from './version-check';
 import memberRoutes from './member';
 import subscriptionRoutes from './subscription';
@@ -99,6 +100,9 @@ router.use('/license-query', licenseQueryRoutes);
 
 // 官网配置接口
 router.use('/website-config', websiteConfigRoutes);
+
+// 官网内容接口（文章/公告/案例/文档/导航/访问上报）
+router.use('/site', siteRoutes);
 
 // 版本检查接口（供私有客户和SaaS租户检查更新）
 router.use('/version-check', versionCheckRoutes);

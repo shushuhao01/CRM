@@ -34,7 +34,26 @@
         <router-link to="/pricing" class="nav-link" @click="menuOpen = false">价格方案</router-link>
         <router-link to="/compare" class="nav-link" @click="menuOpen = false">版本对比</router-link>
         <router-link to="/solutions" class="nav-link" @click="menuOpen = false">解决方案</router-link>
-        <router-link to="/docs" class="nav-link" @click="menuOpen = false">帮助文档</router-link>
+        <router-link to="/cases" class="nav-link" @click="menuOpen = false">客户案例</router-link>
+        <div
+          class="nav-dropdown"
+          ref="resourceDropdownRef"
+          :class="{ open: showResourceMenu }"
+          @mouseenter="showResourceMenu = true"
+          @mouseleave="showResourceMenu = false"
+        >
+          <button type="button" class="nav-link nav-dropdown-trigger" @click.stop="showResourceMenu = !showResourceMenu">
+            资源
+            <span class="arrow" :class="{ open: showResourceMenu }">▾</span>
+          </button>
+          <transition name="dropdown-fade">
+            <div v-show="showResourceMenu" class="nav-dropdown-menu">
+              <router-link to="/blog" class="dropdown-item" @click="closeResourceMenu">📝 博客文章</router-link>
+              <router-link to="/docs" class="dropdown-item" @click="closeResourceMenu">📚 帮助文档</router-link>
+              <router-link to="/notice" class="dropdown-item" @click="closeResourceMenu">📢 更新日志</router-link>
+            </div>
+          </transition>
+        </div>
         <router-link to="/about" class="nav-link" @click="menuOpen = false">关于我们</router-link>
       </div>
 
@@ -97,10 +116,12 @@ const isScrolled = ref(false)
 const menuOpen = ref(false)
 const showDropdown = ref(false)
 const showLoginMenu = ref(false)
+const showResourceMenu = ref(false)
 const crmUrl = ref('') // 动态CRM系统地址
 const memberCheckKey = ref(0)
 const userDropdownRef = ref<HTMLElement | null>(null)
 const loginDropdownRef = ref<HTMLElement | null>(null)
+const resourceDropdownRef = ref<HTMLElement | null>(null)
 
 const memberLoggedIn = computed(() => {
   void memberCheckKey.value
@@ -119,6 +140,11 @@ const handleLogout = () => {
   router.push('/')
 }
 
+const closeResourceMenu = () => {
+  showResourceMenu.value = false
+  menuOpen.value = false
+}
+
 const handleScroll = () => {
   isScrolled.value = window.scrollY > 20
 }
@@ -134,6 +160,9 @@ const handleClickOutside = (e: MouseEvent) => {
   }
   if (loginDropdownRef.value && !loginDropdownRef.value.contains(target)) {
     showLoginMenu.value = false
+  }
+  if (resourceDropdownRef.value && !resourceDropdownRef.value.contains(target)) {
+    showResourceMenu.value = false
   }
 }
 
@@ -238,6 +267,46 @@ onUnmounted(() => {
   }
 }
 
+.nav-dropdown {
+  position: relative;
+
+  &.open > .nav-dropdown-trigger {
+    color: var(--primary);
+    background: rgba(99, 102, 241, 0.08);
+  }
+}
+
+.nav-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.nav-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 160px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+  margin-top: 6px;
+  z-index: 1001;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: 0;
+    right: 0;
+    height: 8px;
+  }
+}
+
 .nav-actions {
   display: flex;
   align-items: center;
@@ -297,6 +366,24 @@ onUnmounted(() => {
     text-align: center;
     padding: 14px;
     font-size: 15px;
+  }
+
+  .nav-dropdown {
+    width: 100%;
+  }
+
+  .nav-dropdown-trigger {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .nav-dropdown-menu {
+    position: static;
+    box-shadow: none;
+    margin-top: 0;
+    background: var(--bg-light);
+
+    &::before { display: none; }
   }
 
   .nav-actions {

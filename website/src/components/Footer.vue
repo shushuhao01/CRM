@@ -57,7 +57,9 @@
             <router-link to="/features">功能特性</router-link>
             <router-link to="/pricing">价格方案</router-link>
             <router-link to="/solutions">解决方案</router-link>
-            <router-link to="/docs/start/intro">更新日志</router-link>
+            <router-link to="/cases">客户案例</router-link>
+            <router-link to="/blog">博客文章</router-link>
+            <router-link to="/notice">更新日志</router-link>
           </div>
           <div class="link-group">
             <h4>支持</h4>

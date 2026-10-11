@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { trackPageVisit } from '@/api/site'
 
 const routes = [
   {
@@ -66,6 +67,45 @@ const routes = [
     name: 'Agreement',
     component: () => import('@/views/Agreement.vue'),
     meta: { title: '服务协议 - 云客CRM' }
+  },
+  // 博客文章
+  {
+    path: '/blog',
+    name: 'BlogList',
+    component: () => import('@/views/BlogList.vue'),
+    meta: { title: '博客文章 - 云客CRM', description: '云客CRM行业洞察、销售管理方法与产品实践' }
+  },
+  {
+    path: '/blog/:slug',
+    name: 'BlogDetail',
+    component: () => import('@/views/BlogDetail.vue'),
+    meta: { title: '文章详情 - 云客CRM' }
+  },
+  // 客户案例
+  {
+    path: '/cases',
+    name: 'CaseList',
+    component: () => import('@/views/CaseList.vue'),
+    meta: { title: '客户案例 - 云客CRM', description: '各行业客户使用云客CRM的真实案例与落地成效' }
+  },
+  {
+    path: '/cases/:slug',
+    name: 'CaseDetail',
+    component: () => import('@/views/CaseDetail.vue'),
+    meta: { title: '案例详情 - 云客CRM' }
+  },
+  // 更新日志（站点公告）
+  {
+    path: '/notice',
+    name: 'NoticeList',
+    component: () => import('@/views/NoticeList.vue'),
+    meta: { title: '更新日志 - 云客CRM', description: '云客CRM产品更新与站点公告' }
+  },
+  {
+    path: '/notice/:slug',
+    name: 'NoticeDetail',
+    component: () => import('@/views/NoticeDetail.vue'),
+    meta: { title: '公告详情 - 云客CRM' }
   },
   // 会员中心 - 登录页（无需认证）
   {
@@ -137,6 +177,22 @@ router.afterEach((to) => {
       metaDesc.setAttribute('content', description)
       document.head.appendChild(metaDesc)
     }
+  }
+
+  // 访问统计上报（静默，排除会员中心）
+  if (!to.path.startsWith('/member')) {
+    const ua = navigator.userAgent
+    const device = /Mobi|Android|iPhone|iPad|iPod/i.test(ua) ? 'mobile' : 'pc'
+    let pageType = 'page'
+    if (to.path === '/') pageType = 'home'
+    else if (to.name === 'BlogDetail' || to.name === 'CaseDetail' || to.name === 'NoticeDetail' || to.name === 'DocDetail') pageType = String(to.name).replace('Detail', '').toLowerCase()
+    trackPageVisit({
+      path: to.fullPath,
+      referer: document.referrer || '',
+      device,
+      pageType,
+      pageId: (to.params.slug as string) || (to.params.doc as string) || undefined
+    })
   }
 })
 

@@ -159,6 +159,12 @@
           <el-menu-item v-if="hasPerm('api:list:view')" index="/api/list">接口列表</el-menu-item>
         </el-sub-menu>
 
+        <!-- 官网管理 -->
+        <el-menu-item v-if="hasMenu('website')" index="/website">
+          <el-icon><Monitor /></el-icon>
+          <template #title>官网管理</template>
+        </el-menu-item>
+
         <!-- 系统设置 -->
         <el-sub-menu v-if="hasMenu('settings')" index="/settings">
           <template #title>
@@ -263,7 +269,7 @@ import { useUserStore } from '@/stores/user'
 import {
   Platform, DataAnalysis, Key, Upload, Menu, Setting, Wallet, Connection,
   Fold, Expand, ArrowDown, User, Lock, SwitchButton, OfficeBuilding, UserFilled, GoodsFilled,
-  ChatDotRound, ChatLineSquare
+  ChatDotRound, ChatLineSquare, Monitor
 } from '@element-plus/icons-vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import request from '@/api/request'

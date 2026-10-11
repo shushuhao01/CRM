@@ -40,6 +40,7 @@ import wecomManagementRouter from './wecom-management';
 // 客户转粉 - 暂停开发，后续版本恢复（注释入口即整体下线）
 // import convertFanRouter from './convertFan';
 import mobileAppConfigRouter from './mobile-app-config';
+import siteRouter from './site';
 import { log } from '../../config/logger';
 import { getCentralAdminApiUrl, CENTRAL_SERVER } from '../../config/centralServer';
 // import schedulerRouter from './scheduler'; // 暂时禁用
@@ -239,6 +240,7 @@ router.use('/wecom-management', wecomManagementRouter); // 企微管理 API
 // router.use('/wecom-management/convert-fan', convertFanRouter); // 客户转粉服务台 API
 router.use('/mobile-app-config', mobileAppConfigRouter); // 移动应用管理 API
 router.use('/system-settings', systemSettingsRouter);
+router.use('/site', siteRouter); // 官网管理 API
 // router.use('/scheduler', schedulerRouter); // 暂时禁用
 // 需要认证的系统配置路由
 router.use('/', systemConfigRouter);

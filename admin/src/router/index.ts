@@ -383,6 +383,13 @@ const router = createRouter({
             }
           ]
         },
+        // 官网管理
+        {
+          path: 'website',
+          name: 'WebsiteManage',
+          component: () => import('@/views/website/SiteManage.vue'),
+          meta: { title: '官网管理', icon: 'Monitor' }
+        },
         // 系统设置
         {
           path: 'settings',

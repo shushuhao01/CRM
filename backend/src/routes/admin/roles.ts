@@ -158,6 +158,25 @@ const PERMISSION_TREE = [
     ]
   },
   {
+    code: 'website',
+    name: '官网管理',
+    children: [
+      { code: 'website:settings:view', name: '查看站点设置' },
+      { code: 'website:settings:edit', name: '编辑站点设置' },
+      { code: 'website:articles:view', name: '查看文章管理' },
+      { code: 'website:articles:edit', name: '编辑文章' },
+      { code: 'website:notices:view', name: '查看公告管理' },
+      { code: 'website:notices:edit', name: '编辑公告' },
+      { code: 'website:cases:view', name: '查看案例管理' },
+      { code: 'website:cases:edit', name: '编辑案例' },
+      { code: 'website:docs:view', name: '查看文档管理' },
+      { code: 'website:docs:edit', name: '编辑文档' },
+      { code: 'website:nav:view', name: '查看导航管理' },
+      { code: 'website:nav:edit', name: '编辑导航菜单' },
+      { code: 'website:stats:view', name: '查看访问统计' }
+    ]
+  },
+  {
     code: 'settings',
     name: '系统设置',
     children: [

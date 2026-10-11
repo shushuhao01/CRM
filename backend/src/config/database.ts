@@ -136,6 +136,8 @@ import { WecomChatAuditMark } from '../entities/WecomChatAuditMark';
 import { ProductSku } from '../entities/ProductSku';
 import { ProductSpecGroup } from '../entities/ProductSpecGroup';
 import { StockAdjustment } from '../entities/StockAdjustment';
+// 官网管理
+import { SiteArticle, SiteCase, SiteDoc, SiteSetting, SiteNav, SiteVisitLog, SiteStatsDaily } from '../entities/SiteEntities';
 import { log } from './logger';
 
 // ==================== 环境配置智能加载 ====================
@@ -191,7 +193,9 @@ const entities = [
   WecomSuiteConfig, WecomSuiteCallbackLog, WecomSuiteAuthLink, WecomNotificationTemplate,
   WecomConvertFanOrder, WecomConvertFanPermission,
   UserSession, CallProspect, WecomChatAuditMark,
-  ProductSku, ProductSpecGroup, StockAdjustment
+  ProductSku, ProductSpecGroup, StockAdjustment,
+  // 官网管理
+  SiteArticle, SiteCase, SiteDoc, SiteSetting, SiteNav, SiteVisitLog, SiteStatsDaily
 ];
 
 // ==================== MySQL 数据库配置 ====================

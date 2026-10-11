@@ -417,6 +417,39 @@
       </div>
     </section>
 
+    <!-- 客户案例 -->
+    <section v-if="siteCases.length > 0" class="cases-section">
+      <div class="container">
+        <div class="section-title">
+          <h2>客户<span>成功案例</span></h2>
+          <p>看看各行业客户如何用云客CRM实现增长</p>
+        </div>
+
+        <div class="cases-grid">
+          <article v-for="item in siteCases" :key="item.id" class="case-card">
+            <router-link :to="`/cases/${item.slug || item.id}`" class="case-cover">
+              <img v-if="item.cover" :src="item.cover" :alt="item.title" />
+              <div v-else class="case-cover-placeholder">🏆</div>
+            </router-link>
+            <div class="case-body">
+              <div class="case-meta">
+                <span v-if="item.industry" class="case-industry">{{ item.industry }}</span>
+                <span v-if="item.clientName" class="case-client">{{ item.clientName }}</span>
+              </div>
+              <h3 class="case-title">
+                <router-link :to="`/cases/${item.slug || item.id}`">{{ item.title }}</router-link>
+              </h3>
+              <p class="case-summary">{{ item.summary || '' }}</p>
+            </div>
+          </article>
+        </div>
+
+        <div class="section-more">
+          <router-link to="/cases" class="btn btn-outline">查看更多案例 →</router-link>
+        </div>
+      </div>
+    </section>
+
     <!-- 产品优势 -->
     <section class="advantages-section">
       <div class="container">
@@ -456,6 +489,39 @@
             <h3>性价比高</h3>
             <p>灵活的定价方案，按需付费，中小企业也能用得起的专业CRM</p>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 最新文章 -->
+    <section v-if="siteArticles.length > 0" class="articles-section">
+      <div class="container">
+        <div class="section-title">
+          <h2>最新<span>动态</span></h2>
+          <p>行业洞察、产品更新与销售管理实践</p>
+        </div>
+
+        <div class="articles-grid">
+          <article v-for="item in siteArticles" :key="item.id" class="article-card">
+            <router-link :to="`/blog/${item.slug || item.id}`" class="article-cover">
+              <img v-if="item.cover" :src="item.cover" :alt="item.title" />
+              <div v-else class="article-cover-placeholder">📝</div>
+            </router-link>
+            <div class="article-body">
+              <div class="article-meta">
+                <span v-if="item.category" class="article-category">{{ item.category }}</span>
+                <time v-if="item.publishedAt" :datetime="item.publishedAt">{{ formatHomeDate(item.publishedAt) }}</time>
+              </div>
+              <h3 class="article-title">
+                <router-link :to="`/blog/${item.slug || item.id}`">{{ item.title }}</router-link>
+              </h3>
+              <p class="article-summary">{{ item.summary || '' }}</p>
+            </div>
+          </article>
+        </div>
+
+        <div class="section-more">
+          <router-link to="/blog" class="btn btn-outline">查看更多文章 →</router-link>
         </div>
       </div>
     </section>
@@ -631,6 +697,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { getPackages, type Package } from '@/api/packages'
 import { getWebsiteConfig, type WebsiteConfig } from '@/api/website-config'
+import { getCases, getArticles, type SiteCaseItem, type SiteArticleItem } from '@/api/site'
 
 const previewVisible = ref(false)
 const previewImage = ref('')
@@ -685,6 +752,16 @@ const wechatServiceUrl = computed(() => websiteConfig.value.customerServiceUrl |
 
 // 套餐数据
 const packagesData = ref<Package[]>([])
+
+// 官网案例与文章
+const siteCases = ref<SiteCaseItem[]>([])
+const siteArticles = ref<SiteArticleItem[]>([])
+
+// 首页日期格式化
+const formatHomeDate = (v: string) => {
+  const d = new Date(v)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 // 免费试用天数（从 FREE_TRIAL 套餐动态读取，兜底14天）
 const trialDays = computed(() => {
@@ -747,6 +824,14 @@ onMounted(() => {
     packagesData.value = data
   }).catch(err => {
     console.error('加载套餐数据失败:', err)
+  })
+
+  // 加载官网客户案例与最新文章（失败静默，板块自动隐藏）
+  getCases({ page: 1, pageSize: 3 }).then(data => {
+    siteCases.value = data?.list || []
+  })
+  getArticles({ page: 1, pageSize: 3 }).then(data => {
+    siteArticles.value = data?.list || []
   })
 })
 
@@ -1916,6 +2001,218 @@ onUnmounted(() => {
   span {
     font-size: 13px;
     color: #86868b;
+  }
+}
+</style>
+
+<style lang="scss" scoped>
+// 客户案例板块
+.cases-section {
+  padding: var(--section-padding);
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+}
+
+.cases-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 30px;
+}
+
+.case-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+
+  &:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+.case-cover {
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-light);
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.case-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0f2fe 100%);
+}
+
+.case-body {
+  padding: 24px;
+}
+
+.case-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.case-industry {
+  padding: 2px 10px;
+  border-radius: 20px;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.case-client {
+  color: var(--text-muted);
+}
+
+.case-title {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 10px;
+
+  a {
+    color: var(--text-primary);
+
+    &:hover {
+      color: var(--primary);
+    }
+  }
+}
+
+.case-summary {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+// 最新文章板块
+.articles-section {
+  padding: var(--section-padding);
+  background: #ffffff;
+}
+
+.articles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 30px;
+}
+
+.article-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+
+  &:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+.article-cover {
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-light);
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.article-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0f2fe 100%);
+}
+
+.article-body {
+  padding: 24px;
+}
+
+.article-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.article-category {
+  padding: 2px 10px;
+  border-radius: 20px;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.article-title {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 10px;
+
+  a {
+    color: var(--text-primary);
+
+    &:hover {
+      color: var(--primary);
+    }
+  }
+}
+
+.article-summary {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.section-more {
+  text-align: center;
+  margin-top: 48px;
+}
+
+@media (max-width: 1024px) {
+  .cases-grid,
+  .articles-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .cases-grid,
+  .articles-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

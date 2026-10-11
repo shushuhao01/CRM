@@ -15,6 +15,7 @@ export const MENU_MODULES = {
   PAYMENT: 'payment',
   VERSIONS: 'versions',
   API: 'api',
+  WEBSITE: 'website',
   SETTINGS: 'settings'
 } as const
 
@@ -137,6 +138,21 @@ export const PERMISSIONS = {
   API_LIST_EDIT: 'api:list:edit',
   API_LIST_DELETE: 'api:list:delete',
 
+  // 官网管理
+  WEBSITE_SETTINGS_VIEW: 'website:settings:view',
+  WEBSITE_SETTINGS_EDIT: 'website:settings:edit',
+  WEBSITE_ARTICLES_VIEW: 'website:articles:view',
+  WEBSITE_ARTICLES_EDIT: 'website:articles:edit',
+  WEBSITE_NOTICES_VIEW: 'website:notices:view',
+  WEBSITE_NOTICES_EDIT: 'website:notices:edit',
+  WEBSITE_CASES_VIEW: 'website:cases:view',
+  WEBSITE_CASES_EDIT: 'website:cases:edit',
+  WEBSITE_DOCS_VIEW: 'website:docs:view',
+  WEBSITE_DOCS_EDIT: 'website:docs:edit',
+  WEBSITE_NAV_VIEW: 'website:nav:view',
+  WEBSITE_NAV_EDIT: 'website:nav:edit',
+  WEBSITE_STATS_VIEW: 'website:stats:view',
+
   // 系统设置
   SETTINGS_ADMINS_VIEW: 'settings:admins:view',
   SETTINGS_ADMINS_CREATE: 'settings:admins:create',
@@ -210,6 +226,8 @@ export const MENU_PERMISSION_MAP: Record<string, string> = {
   '/versions/changelog': PERMISSIONS.VERSION_CHANGELOG_VIEW,
   // 接口管理
   '/api/list': PERMISSIONS.API_LIST_VIEW,
+  // 官网管理（一级菜单）
+  '/website': PERMISSIONS.WEBSITE_SETTINGS_VIEW,
   // 系统设置
   '/settings/admins': PERMISSIONS.SETTINGS_ADMINS_VIEW,
   '/settings/roles': PERMISSIONS.SETTINGS_ROLES_VIEW,

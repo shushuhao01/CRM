@@ -72,6 +72,7 @@ import onlineSeatRoutes from './routes/onlineSeat';
 import mobileAppRoutes from './routes/mobileApp';
 import miniprogramRoutes from './routes/miniprogram';
 import operationLogRoutes from './routes/operationLogs';
+import { siteService } from './services/SiteService';
 import * as fs from 'fs';
 
 // ==================== 环境配置智能加载 ====================
@@ -349,6 +350,19 @@ app.use(`${API_PREFIX}/mobile-app`, mobileAppRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/public`, publicRoutes);
 app.use(`${API_PREFIX}/mp`, miniprogramRoutes);
+
+// ==================== SEO: 动态 sitemap.xml ====================
+// 官网 sitemap，由后端根据已发布内容动态生成（无需站点构建期生成）
+app.get('/sitemap.xml', async (_req, res) => {
+  try {
+    const xml = await siteService.generateSitemap();
+    res.header('Content-Type', 'application/xml; charset=utf-8');
+    res.send(xml);
+  } catch (err: any) {
+    log.error('[Sitemap] 生成失败:', err.message);
+    res.status(500).send('sitemap generation failed');
+  }
+});
 
 // 404 处理
 app.use(notFoundHandler);
