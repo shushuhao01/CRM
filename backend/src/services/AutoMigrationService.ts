@@ -496,7 +496,25 @@ export class AutoMigrationService {
    */
   private generateColumnDef(column: any): string {
     const parts: string[] = [];
-    const dataType = this.mapColumnType(column);
+    let dataType = this.mapColumnType(column);
+
+    // DEFAULT
+    let defVal: string | null = null;
+    if (column.default !== undefined && column.default !== null) {
+      defVal = this.formatDefaultValue(column.default, column.type);
+    }
+
+    // 时间类型精度对齐：MySQL 要求 DATETIME/TIMESTAMP 与其 DEFAULT CURRENT_TIMESTAMP(n)/NOW(n) 的
+    // 小数秒精度(fsp)一致，否则报 "Invalid default value"。CreateDateColumn/UpdateDateColumn 的
+    // 默认值为 () => 'CURRENT_TIMESTAMP(6)'，而 mapColumnType 默认产出无精度的 DATETIME，
+    // 这里依据默认值的精度补齐列类型（如 DATETIME(6)）。
+    if (defVal) {
+      const fspMatch = /^(?:CURRENT_TIMESTAMP|NOW)\((\d+)\)$/i.exec(defVal);
+      if (fspMatch && (dataType === 'DATETIME' || dataType === 'TIMESTAMP')) {
+        dataType = `${dataType}(${fspMatch[1]})`;
+      }
+    }
+
     parts.push(dataType);
 
     // NOT NULL
@@ -512,11 +530,8 @@ export class AutoMigrationService {
     }
 
     // DEFAULT
-    if (column.default !== undefined && column.default !== null) {
-      const defVal = this.formatDefaultValue(column.default, column.type);
-      if (defVal !== null) {
-        parts.push(`DEFAULT ${defVal}`);
-      }
+    if (defVal !== null) {
+      parts.push(`DEFAULT ${defVal}`);
     }
 
     // COMMENT

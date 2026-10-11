@@ -8,8 +8,8 @@ export const SITE_CONFIG = {
   // CRM系统登录地址（也用作登录链接）
   CRM_URL: process.env.CRM_URL || 'https://crm.yunkes.com',
 
-  // 官网地址
-  WEBSITE_URL: process.env.WEBSITE_URL || 'https://yunkes.com',
+  // 官网地址（对外统一规范域名，带 www）
+  WEBSITE_URL: process.env.WEBSITE_URL || 'https://www.yunkes.com',
 
   // API地址
   API_URL: process.env.API_URL || 'https://api.yunkes.com',
@@ -18,7 +18,7 @@ export const SITE_CONFIG = {
   ADMIN_URL: process.env.ADMIN_URL || 'https://admin.yunkes.com',
 
   // 续费页面地址（指向官网价格页）
-  RENEW_URL: process.env.RENEW_URL || 'https://yunkes.com/pricing'
+  RENEW_URL: process.env.RENEW_URL || 'https://www.yunkes.com/pricing'
 };
 
 // 导出便捷方法

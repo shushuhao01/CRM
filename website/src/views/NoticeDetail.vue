@@ -34,37 +34,64 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { getNotice, applySeoMeta, type SiteNoticeDetail } from '@/api/site'
+import { useHead } from '@unhead/vue'
+import type { SiteNoticeDetail } from '@/api/site'
 
 const route = useRoute()
-const item = ref<SiteNoticeDetail | null>(null)
-const loading = ref(false)
 
-async function load() {
-  const key = (route.params.slug as string) || ''
-  if (!key) return
-  loading.value = true
-  const data = await getNotice(key)
-  item.value = data
-  if (data) {
-    applySeoMeta({
-      title: data.seoTitle || `${data.title} - 云客CRM公告`,
-      description: data.seoDescription || data.summary,
-      keywords: data.seoKeywords
-    })
-  }
-  loading.value = false
-}
+/**
+ * 公告数据由 main.ts 的 router.beforeResolve 守卫写入 route.meta.state，
+ * SSR 期间由 vite-ssg 序列化进 window.__INITIAL_STATE__，客户端首屏直接复用，避免二次请求。
+ */
+const item = computed<SiteNoticeDetail | null>(
+  () => ((route.meta?.state as any)?.notice as SiteNoticeDetail | null) ?? null
+)
+
+const loading = computed(() => {
+  const state = route.meta?.state as any
+  return !state || !('notice' in state)
+})
 
 function formatDate(v: string) {
   const d = new Date(v)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-watch(() => route.params.slug, load)
-onMounted(load)
+useHead(() => {
+  const n = item.value
+  const title = n ? (n.seoTitle || `${n.title} - 云客CRM公告`) : '公告详情 - 云客CRM'
+  const description = n?.seoDescription || n?.summary || ''
+  const meta: { name?: string; property?: string; content: string }[] = [
+    { property: 'og:title', content: title }
+  ]
+  if (description) {
+    meta.push({ name: 'description', content: description })
+    meta.push({ property: 'og:description', content: description })
+  }
+  if (n?.seoKeywords) meta.push({ name: 'keywords', content: n.seoKeywords })
+  // Article 结构化数据
+  const script = n
+    ? [
+        {
+          type: 'application/ld+json',
+          innerHTML: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Article',
+            headline: n.seoTitle || n.title,
+            description: description || undefined,
+            datePublished: n.publishedAt || undefined,
+            dateModified: n.updatedAt || n.publishedAt || undefined,
+            author: { '@type': 'Organization', name: '云客CRM' },
+            publisher: { '@type': 'Organization', name: '广州仙狐网络科技有限公司' },
+            mainEntityOfPage: { '@type': 'WebPage', '@id': `https://www.yunkes.com/notice/${n.slug}` }
+          }).replace(/</g, '\\u003c')
+        }
+      ]
+    : []
+  return { title, meta, script }
+})
 </script>
 
 <style lang="scss" scoped>

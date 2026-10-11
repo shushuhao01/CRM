@@ -3,7 +3,16 @@
  * 对接后端 /api/v1/public/site/*
  * 用于官网展示文章、公告(更新日志)、案例、帮助文档、导航菜单与站点设置
  */
-const API_BASE = '/api/v1'
+/**
+ * 接口基地址
+ * - 浏览器：走同源相对路径，由 nginx / vite 代理到后端
+ * - 服务端预渲染（SSG 构建）：相对 URL 无法 fetch，需用绝对地址访问后端，
+ *   可通过环境变量 SSG_API_BASE 指定（默认 http://127.0.0.1:3000）
+ */
+const API_BASE =
+  typeof window === 'undefined'
+    ? `${(typeof process !== 'undefined' && process.env.SSG_API_BASE) || 'http://127.0.0.1:3000'}/api/v1`
+    : '/api/v1'
 
 export interface SiteNavItem {
   id: string
@@ -316,21 +325,4 @@ export function sendHeartbeat(): void {
 export function trackEvent(type: 'download' | 'buy' | 'trial'): void {
   if (typeof window === 'undefined') return
   trackPageVisit({ type, visitorId: getVisitorId(), channelCode: resolveChannelCode() })
-}
-
-/** 详情页 SEO：设置浏览器标题与 meta 描述/关键词 */
-export function applySeoMeta(options: { title?: string; description?: string; keywords?: string }) {
-  if (options.title) document.title = options.title
-  const setMeta = (name: string, content?: string) => {
-    if (!content) return
-    let el = document.querySelector(`meta[name="${name}"]`)
-    if (!el) {
-      el = document.createElement('meta')
-      el.setAttribute('name', name)
-      document.head.appendChild(el)
-    }
-    el.setAttribute('content', content)
-  }
-  setMeta('description', options.description)
-  setMeta('keywords', options.keywords)
 }

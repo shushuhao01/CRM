@@ -153,11 +153,25 @@ export async function loadDocContent(category: string, doc: string): Promise<str
     return contentCache.get(cacheKey)!
   }
   try {
-    const response = await fetch(`/docs/${category}/${doc}.md`)
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
+    let markdown: string
+    if (typeof window === 'undefined') {
+      // 构建期预渲染（SSG）：SSR 环境无法 fetch 相对 URL，直接从本地文件系统读取
+      // 构建时 cwd = website 根目录，文档位于 public/docs/{category}/{doc}.md
+      const [{ readFile }, { join }] = await Promise.all([
+        import('node:fs/promises'),
+        import('node:path')
+      ])
+      markdown = await readFile(
+        join(process.cwd(), 'public', 'docs', category, `${doc}.md`),
+        'utf-8'
+      )
+    } else {
+      const response = await fetch(`/docs/${category}/${doc}.md`)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      markdown = await response.text()
     }
-    const markdown = await response.text()
     contentCache.set(cacheKey, markdown)
     return markdown
   } catch (error) {

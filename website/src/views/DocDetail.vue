@@ -47,49 +47,77 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useHead } from '@unhead/vue'
 import { marked } from 'marked'
-import { docCategories, loadDocContent, getDocTitle, getCategoryTitle } from '@/data/docs'
+import { docCategories, getDocTitle, getCategoryTitle } from '@/data/docs'
 
 const route = useRoute()
 
-const currentCategory = ref('')
-const currentDoc = ref('')
-const currentCategoryTitle = ref('')
-const currentDocTitle = ref('')
-const renderedContent = ref('')
-const isLoading = ref(false)
-const loadError = ref(false)
-
-/** 根据路由参数加载文档 */
-async function loadCurrentDoc() {
-  const category = (route.params.category as string) || 'start'
-  const doc = (route.params.doc as string) || 'intro'
-
-  currentCategory.value = category
-  currentDoc.value = doc
-  currentCategoryTitle.value = getCategoryTitle(category)
-  currentDocTitle.value = getDocTitle(category, doc)
-
-  isLoading.value = true
-  loadError.value = false
-
-  try {
-    const markdown = await loadDocContent(category, doc)
-    renderedContent.value = await marked(markdown)
-  } catch {
-    loadError.value = true
-    renderedContent.value = '<p>文档加载失败，请稍后重试。</p>'
-  } finally {
-    isLoading.value = false
-  }
+interface DocState {
+  category: string
+  doc: string
+  markdown: string
 }
 
-// 监听路由变化重新加载
-watch(() => [route.params.category, route.params.doc], loadCurrentDoc)
+/**
+ * 文档 Markdown 由 main.ts 的 router.beforeResolve 守卫读取（SSR 走 fs，客户端走 fetch）
+ * 并写入 route.meta.state.docContent，经 vite-ssg 序列化后客户端首屏可直接复用。
+ */
+const docState = computed<DocState | undefined>(
+  () => (route.meta?.state as any)?.docContent as DocState | undefined
+)
 
-onMounted(loadCurrentDoc)
+const currentCategory = computed(() => docState.value?.category || String(route.params.category || 'start'))
+const currentDoc = computed(() => docState.value?.doc || String(route.params.doc || 'intro'))
+const currentCategoryTitle = computed(() => getCategoryTitle(currentCategory.value))
+const currentDocTitle = computed(() => getDocTitle(currentCategory.value, currentDoc.value))
+const renderedContent = computed(() => marked(docState.value?.markdown || '') as string)
+const isLoading = computed(() => !docState.value)
+
+useHead(() => {
+  const docTitle = currentDocTitle.value
+  const categoryTitle = currentCategoryTitle.value
+  const title =
+    docTitle && categoryTitle
+      ? `${docTitle} - ${categoryTitle} | 云客CRM 帮助文档`
+      : '帮助文档 - 云客CRM'
+  const description =
+    docTitle && categoryTitle
+      ? `${docTitle}（${categoryTitle}）—— 云客CRM 帮助文档，提供详细的使用指引与操作说明。`
+      : '云客CRM是专为销售团队打造的智能客户关系管理系统，集客户管理、订单处理、业绩分析、物流跟踪于一体，助力企业提升销售转化率。'
+  // TechArticle 结构化数据
+  const script =
+    docTitle && categoryTitle
+      ? [
+          {
+            type: 'application/ld+json',
+            innerHTML: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'TechArticle',
+              headline: docTitle,
+              description,
+              articleSection: categoryTitle,
+              publisher: { '@type': 'Organization', name: '广州仙狐网络科技有限公司' },
+              mainEntityOfPage: {
+                '@type': 'WebPage',
+                '@id': `https://www.yunkes.com/docs/${currentCategory.value}/${currentDoc.value}`
+              }
+            }).replace(/</g, '\\u003c')
+          }
+        ]
+      : []
+  return {
+    title,
+    meta: [
+      { property: 'og:title', content: title },
+      { name: 'description', content: description },
+      { property: 'og:description', content: description }
+    ],
+    script
+  }
+})
 </script>
 
 <style lang="scss" scoped>

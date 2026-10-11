@@ -21,13 +21,22 @@ import {
   listChannelVisits,
   buildShortUrl
 } from '../../services/ChannelService';
+import { SITE_CONFIG } from '../../config/sites';
 import { log } from '../../config/logger';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
-// 首次加载时懒触发自动建表（失败仅告警，不阻塞启动）
-siteService.ensureTables().catch(() => {});
+// 请求前确保官网相关表已创建（幂等，成功后缓存 Promise）。
+// 模块加载期 DB 连接可能尚未就绪，故不能只在加载时触发，必须放在请求链路中。
+router.use(async (_req: Request, _res: Response, next) => {
+  try {
+    await siteService.ensureTables();
+  } catch {
+    // 建表失败不阻断请求，交由后续查询报错并触发下次重试
+  }
+  next();
+});
 
 /** 公共：解析分页参数 */
 function parsePage(req: Request) {
@@ -148,9 +157,13 @@ router.post('/articles', async (req: Request, res: Response) => {
       seoDescription: b.seoDescription || null,
       publishedAt: b.status === 'published' ? (normalizeDate(b.publishedAt) || new Date()) : normalizeDate(b.publishedAt),
       createdBy: currentAdmin?.id || null
-    } as any);
+    } as any) as unknown as SiteArticle;
 
     await repo.save(item);
+    if (item.status === 'published') {
+      const seg = item.type === 'notice' ? 'notice' : 'blog';
+      siteService.pushContentUrl(`/${seg}/${item.slug || item.id}`).catch(() => {});
+    }
     res.json({ success: true, message: '保存成功', data: item });
   } catch (error: any) {
     log.error('[Admin官网] 创建文章失败:', error);
@@ -180,6 +193,10 @@ router.put('/articles/:id', async (req: Request, res: Response) => {
     if (item.status === 'published' && !item.publishedAt) item.publishedAt = new Date();
 
     await repo.save(item);
+    if (item.status === 'published') {
+      const seg = item.type === 'notice' ? 'notice' : 'blog';
+      siteService.pushContentUrl(`/${seg}/${item.slug || item.id}`).catch(() => {});
+    }
     res.json({ success: true, message: '更新成功', data: item });
   } catch (error: any) {
     log.error('[Admin官网] 更新文章失败:', error);
@@ -273,9 +290,12 @@ router.post('/cases', async (req: Request, res: Response) => {
       seoDescription: b.seoDescription || null,
       publishedAt: b.status === 'published' ? (normalizeDate(b.publishedAt) || new Date()) : normalizeDate(b.publishedAt),
       createdBy: currentAdmin?.id || null
-    } as any);
+    } as any) as unknown as SiteCase;
 
     await repo.save(item);
+    if (item.status === 'published') {
+      siteService.pushContentUrl(`/cases/${item.slug || item.id}`).catch(() => {});
+    }
     res.json({ success: true, message: '保存成功', data: item });
   } catch (error: any) {
     log.error('[Admin官网] 创建案例失败:', error);
@@ -304,6 +324,9 @@ router.put('/cases/:id', async (req: Request, res: Response) => {
     if (item.status === 'published' && !item.publishedAt) item.publishedAt = new Date();
 
     await repo.save(item);
+    if (item.status === 'published') {
+      siteService.pushContentUrl(`/cases/${item.slug || item.id}`).catch(() => {});
+    }
     res.json({ success: true, message: '更新成功', data: item });
   } catch (error: any) {
     log.error('[Admin官网] 更新案例失败:', error);
@@ -670,11 +693,17 @@ router.get('/visits', async (req: Request, res: Response) => {
 
 // ==================== 官网渠道链接（推广短链） ====================
 
-/** 计算短链展示根地址：优先站点配置域名，为空时回退请求 Host */
+/**
+ * 计算短链展示根地址：官网推广短链必须指向官网域名（/c/{code} 仅官网有对应路由）。
+ * 优先级：站点配置域名 → 部署配置的官网地址(WEBSITE_URL，默认 https://yunkes.com) → 请求 Host 兜底。
+ * 注意：不可回退到 admin 后台的请求 Host，否则短链会落到 admin 子域名而无法跳转与统计。
+ */
 async function channelBase(req: Request): Promise<string> {
   const settings = await siteService.getSettings();
   const domain = (settings.siteUrl || settings.site_url || settings.site_domain || '').trim();
   if (domain) return domain.replace(/\/+$/, '');
+  const official = (SITE_CONFIG.WEBSITE_URL || '').trim().replace(/\/+$/, '');
+  if (official) return official;
   const host = String(req.headers.host || '');
   if (!host) return '';
   const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();

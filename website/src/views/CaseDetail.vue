@@ -46,42 +46,70 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { getCase, applySeoMeta, trackEvent, type SiteCaseDetail } from '@/api/site'
+import { useHead } from '@unhead/vue'
+import { trackEvent, type SiteCaseDetail } from '@/api/site'
 
 const route = useRoute()
-const item = ref<SiteCaseDetail | null>(null)
-const loading = ref(false)
+
+/**
+ * 案例数据由 main.ts 的 router.beforeResolve 守卫写入 route.meta.state，
+ * SSR 期间由 vite-ssg 序列化进 window.__INITIAL_STATE__，客户端首屏直接复用，避免二次请求。
+ */
+const item = computed<SiteCaseDetail | null>(
+  () => ((route.meta?.state as any)?.caseItem as SiteCaseDetail | null) ?? null
+)
+
+const loading = computed(() => {
+  const state = route.meta?.state as any
+  return !state || !('caseItem' in state)
+})
 
 const tagList = computed(() => {
   if (!item.value?.tags) return []
   return item.value.tags.split(',').map(t => t.trim()).filter(Boolean)
 })
 
-async function load() {
-  const key = (route.params.slug as string) || ''
-  if (!key) return
-  loading.value = true
-  const data = await getCase(key)
-  item.value = data
-  if (data) {
-    applySeoMeta({
-      title: data.seoTitle || `${data.title} - 云客CRM客户案例`,
-      description: data.seoDescription || data.summary,
-      keywords: data.seoKeywords
-    })
-  }
-  loading.value = false
-}
-
 function formatDate(v: string) {
   const d = new Date(v)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-watch(() => route.params.slug, load)
-onMounted(load)
+useHead(() => {
+  const c = item.value
+  const title = c ? (c.seoTitle || `${c.title} - 云客CRM客户案例`) : '案例详情 - 云客CRM'
+  const description = c?.seoDescription || c?.summary || ''
+  const meta: { name?: string; property?: string; content: string }[] = [
+    { property: 'og:title', content: title }
+  ]
+  if (description) {
+    meta.push({ name: 'description', content: description })
+    meta.push({ property: 'og:description', content: description })
+  }
+  if (c?.seoKeywords) meta.push({ name: 'keywords', content: c.seoKeywords })
+  // CreativeWork 结构化数据
+  const script = c
+    ? [
+        {
+          type: 'application/ld+json',
+          innerHTML: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'CreativeWork',
+            name: c.seoTitle || c.title,
+            description: description || undefined,
+            datePublished: c.publishedAt || undefined,
+            creator: { '@type': 'Organization', name: '云客CRM' },
+            publisher: { '@type': 'Organization', name: '广州仙狐网络科技有限公司' },
+            about: c.industry || undefined,
+            image: c.cover || undefined,
+            mainEntityOfPage: { '@type': 'WebPage', '@id': `https://www.yunkes.com/cases/${c.slug}` }
+          }).replace(/</g, '\\u003c')
+        }
+      ]
+    : []
+  return { title, meta, script }
+})
 </script>
 
 <style lang="scss" scoped>

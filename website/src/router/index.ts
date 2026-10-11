@@ -1,7 +1,7 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import type { Router } from 'vue-router'
 import { trackPageview } from '@/api/site'
 
-const routes = [
+export const routes = [
   {
     path: '/',
     name: 'Home',
@@ -143,53 +143,26 @@ const routes = [
   }
 ]
 
-const router = createRouter({
-  history: createWebHistory(),
-  routes,
-  scrollBehavior(_to, _from, savedPosition) {
-    if (savedPosition) {
-      return savedPosition
-    } else if (_to.hash) {
-      return { el: _to.hash, behavior: 'smooth' }
-    } else {
-      return { top: 0, behavior: 'smooth' }
+/**
+ * 注册全局路由守卫（SSR 安全：服务端不访问 localStorage / document）
+ */
+export function setupRouterGuards(router: Router) {
+  // 会员中心路由守卫
+  router.beforeEach((to, _from, next) => {
+    if (to.meta?.requiresMember) {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('member_token') : null
+      if (!token) {
+        return next({ path: '/member/login', query: { redirect: to.fullPath } })
+      }
     }
-  }
-})
+    next()
+  })
 
-// 会员中心路由守卫
-router.beforeEach((to, _from, next) => {
-  if (to.meta?.requiresMember) {
-    const token = localStorage.getItem('member_token')
-    if (!token) {
-      return next({ path: '/member/login', query: { redirect: to.fullPath } })
+  // 访问统计上报（仅客户端，排除会员中心）
+  router.afterEach((to) => {
+    if (typeof window === 'undefined') return
+    if (!to.path.startsWith('/member')) {
+      trackPageview(to.fullPath)
     }
-  }
-  next()
-})
-
-// SEO：动态设置页面标题和 meta description
-router.afterEach((to) => {
-  const title = (to.meta?.title as string) || '云客CRM - 智能销售管理系统'
-  document.title = title
-
-  const description = (to.meta?.description as string)
-  if (description) {
-    let metaDesc = document.querySelector('meta[name="description"]')
-    if (metaDesc) {
-      metaDesc.setAttribute('content', description)
-    } else {
-      metaDesc = document.createElement('meta')
-      metaDesc.setAttribute('name', 'description')
-      metaDesc.setAttribute('content', description)
-      document.head.appendChild(metaDesc)
-    }
-  }
-
-  // 访问统计上报（静默，排除会员中心）
-  if (!to.path.startsWith('/member')) {
-    trackPageview(to.fullPath)
-  }
-})
-
-export default router
+  })
+}

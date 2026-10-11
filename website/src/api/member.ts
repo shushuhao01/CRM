@@ -8,25 +8,33 @@ const TOKEN_KEY = 'member_token'
 const TENANT_KEY = 'member_tenant'
 
 export function getMemberToken(): string | null {
+  if (typeof localStorage === 'undefined') return null
   return localStorage.getItem(TOKEN_KEY)
 }
 
 export function setMemberToken(token: string): void {
+  if (typeof localStorage === 'undefined') return
   localStorage.setItem(TOKEN_KEY, token)
 }
 
 export function clearMemberToken(): void {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(TENANT_KEY)
-  window.dispatchEvent(new Event('member-login-change'))
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(TENANT_KEY)
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('member-login-change'))
+  }
 }
 
 export function getMemberTenant(): any {
+  if (typeof localStorage === 'undefined') return null
   const data = localStorage.getItem(TENANT_KEY)
   return data ? JSON.parse(data) : null
 }
 
 export function setMemberTenant(tenant: any): void {
+  if (typeof localStorage === 'undefined') return
   localStorage.setItem(TENANT_KEY, JSON.stringify(tenant))
 }
 

@@ -712,6 +712,38 @@ class SiteService {
     }
   }
 
+  /**
+   * 内容发布后自动推送单条 URL 到搜索引擎（百度 + IndexNow）
+   * 受站点设置 seoPushEnabled 开关控制；失败仅记录日志，不影响主流程
+   * @param urlPath 相对路径，如 /blog/xxx、/cases/xxx、/notice/xxx
+   */
+  async pushContentUrl(urlPath: string): Promise<void> {
+    const p = (urlPath || '').trim();
+    if (!p) return;
+    try {
+      const settings = await this.getSettings();
+      if (settings.seoPushEnabled === '0') return;
+      const [baidu, indexNow] = await Promise.allSettled([
+        this.pushToBaidu([p]),
+        this.pushToIndexNow([p])
+      ]);
+      if (baidu.status === 'fulfilled' && baidu.value.success) {
+        log.info(`[Site] 百度推送成功: ${p}`);
+      } else {
+        const msg = baidu.status === 'fulfilled' ? baidu.value.message : (baidu.reason?.message || baidu.reason);
+        log.warn(`[Site] 百度推送未成功: ${p} - ${msg}`);
+      }
+      if (indexNow.status === 'fulfilled' && indexNow.value.success) {
+        log.info(`[Site] IndexNow 推送成功: ${p}`);
+      } else {
+        const msg = indexNow.status === 'fulfilled' ? indexNow.value.message : (indexNow.reason?.message || indexNow.reason);
+        log.warn(`[Site] IndexNow 推送未成功: ${p} - ${msg}`);
+      }
+    } catch (e: any) {
+      log.warn(`[Site] 内容推送异常: ${p} - ${e?.message || e}`);
+    }
+  }
+
   /** 记录一次访问日志（公开接口调用） */
   async trackVisit(data: {
     path: string;

@@ -141,12 +141,6 @@ echo ""
 # ==================== Step 5: 构建所有端 ====================
 echo -e "${YELLOW}[5] 构建项目...${NC}"
 
-# ★ 构建前先停掉后端进程释放内存（后端 Node 进程占 200-500MB，构建时不需要）
-if command -v pm2 &> /dev/null && pm2 describe crm-backend &> /dev/null 2>&1; then
-    echo -e "${YELLOW}    [i] 暂停后端服务以释放构建内存...${NC}"
-    pm2 stop crm-backend 2>/dev/null || true
-fi
-
 # 5.1 CRM 主应用
 echo -e "${YELLOW}    [5.1] 构建 CRM 主应用...${NC}"
 cd "$PROJECT_DIR"
@@ -154,11 +148,19 @@ npm run build
 echo -e "${GREEN}    [OK] CRM 主应用构建完成${NC}"
 
 # 5.2 官网
+# ★ 注意：官网已改为 vite-ssg 构建期预渲染，构建时需访问后端 API 拉取文章/案例/公告等动态路由，
+#   故本步骤必须保持后端服务运行（pm2 stop 已挪到官网构建之后），否则动态详情页不会被预渲染。
 if [ -f "$PROJECT_DIR/website/package.json" ] && [ -d "$PROJECT_DIR/website/src" ]; then
     echo -e "${YELLOW}    [5.2] 构建官网...${NC}"
     cd "$PROJECT_DIR/website"
     npm run build
     echo -e "${GREEN}    [OK] 官网构建完成${NC}"
+fi
+
+# ★ 官网构建完成后，再停掉后端进程释放内存（后端 Node 进程占 200-500MB，后续 admin/h5 构建不需要）
+if command -v pm2 &> /dev/null && pm2 describe crm-backend &> /dev/null 2>&1; then
+    echo -e "${YELLOW}    [i] 暂停后端服务以释放构建内存...${NC}"
+    pm2 stop crm-backend 2>/dev/null || true
 fi
 
 # 5.3 管理后台

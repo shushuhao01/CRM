@@ -14,8 +14,16 @@ import { log } from '../../config/logger';
 
 const router = Router();
 
-// 首次加载懒触发自动建表
-siteService.ensureTables().catch(() => {});
+// 请求前确保官网相关表已创建（幂等，成功后缓存 Promise）。
+// 注意：模块加载期 DB 连接可能尚未就绪，故不能只在加载时触发，必须放在请求链路中。
+router.use(async (_req: Request, _res: Response, next) => {
+  try {
+    await siteService.ensureTables();
+  } catch {
+    // 建表失败不阻断请求，交由后续查询报错并触发下次重试
+  }
+  next();
+});
 
 /** 只返回已发布内容 */
 const PUBLISHED = 'published';

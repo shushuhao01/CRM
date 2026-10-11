@@ -3,5 +3,5 @@ Allow: /
 Disallow: /api/
 Disallow: /admin/
 
-Sitemap: https://www.yunke-crm.com/sitemap.xml
+Sitemap: https://www.yunkes.com/sitemap.xml
 

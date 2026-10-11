@@ -58,42 +58,70 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { getArticle, applySeoMeta, type SiteArticleDetail } from '@/api/site'
+import { useHead } from '@unhead/vue'
+import type { SiteArticleDetail } from '@/api/site'
 
 const route = useRoute()
-const article = ref<SiteArticleDetail | null>(null)
-const loading = ref(false)
+
+/**
+ * 文章数据由 main.ts 的 router.beforeResolve 守卫写入 route.meta.state，
+ * SSR 期间由 vite-ssg 序列化进 window.__INITIAL_STATE__，客户端首屏直接复用，避免二次请求。
+ */
+const article = computed<SiteArticleDetail | null>(
+  () => ((route.meta?.state as any)?.article as SiteArticleDetail | null) ?? null
+)
+
+const loading = computed(() => {
+  const state = route.meta?.state as any
+  return !state || !('article' in state)
+})
 
 const tagList = computed(() => {
   if (!article.value?.tags) return []
   return article.value.tags.split(',').map(t => t.trim()).filter(Boolean)
 })
 
-async function load() {
-  const key = (route.params.slug as string) || ''
-  if (!key) return
-  loading.value = true
-  const data = await getArticle(key)
-  article.value = data
-  if (data) {
-    applySeoMeta({
-      title: data.seoTitle || `${data.title} - 云客CRM`,
-      description: data.seoDescription || data.summary,
-      keywords: data.seoKeywords
-    })
-  }
-  loading.value = false
-}
-
 function formatDate(v: string) {
   const d = new Date(v)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-watch(() => route.params.slug, load)
-onMounted(load)
+useHead(() => {
+  const a = article.value
+  const title = a ? (a.seoTitle || `${a.title} - 云客CRM`) : '文章详情 - 云客CRM'
+  const description = a?.seoDescription || a?.summary || ''
+  const meta: { name?: string; property?: string; content: string }[] = [
+    { property: 'og:title', content: title }
+  ]
+  if (description) {
+    meta.push({ name: 'description', content: description })
+    meta.push({ property: 'og:description', content: description })
+  }
+  if (a?.seoKeywords) meta.push({ name: 'keywords', content: a.seoKeywords })
+  // Article 结构化数据
+  const script = a
+    ? [
+        {
+          type: 'application/ld+json',
+          innerHTML: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Article',
+            headline: a.seoTitle || a.title,
+            description: description || undefined,
+            datePublished: a.publishedAt || undefined,
+            dateModified: a.updatedAt || a.publishedAt || undefined,
+            author: { '@type': 'Organization', name: a.author || '云客CRM' },
+            publisher: { '@type': 'Organization', name: '广州仙狐网络科技有限公司' },
+            image: a.cover || undefined,
+            mainEntityOfPage: { '@type': 'WebPage', '@id': `https://www.yunkes.com/blog/${a.slug}` }
+          }).replace(/</g, '\\u003c')
+        }
+      ]
+    : []
+  return { title, meta, script }
+})
 </script>
 
 <style lang="scss" scoped>
