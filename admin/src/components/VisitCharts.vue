@@ -143,7 +143,7 @@ function padHour(h: number): string {
 }
 
 const EMPTY_SUMMARY = {
-  pv: 0, uv: 0, ips: 0, downloads: 0, buyClicks: 0,
+  pv: 0, uv: 0, ips: 0, downloads: 0, buyClicks: 0, trialClicks: 0, registerUsers: 0,
   todayPv: 0, todayUv: 0, avgPv: 0, peakHour: 0, peakHourPv: 0,
 }
 const summary = computed(() => props.analytics?.summary ?? EMPTY_SUMMARY)
@@ -155,8 +155,8 @@ const cards = computed(() => {
     { label: '区间访问 (PV)', value: s.pv },
     { label: '区间访客 (UV)', value: s.uv },
     { label: '独立 IP', value: s.ips },
-    { label: '下载点击', value: s.downloads },
-    { label: '购买点击', value: s.buyClicks },
+    { label: '免费试用点击', value: s.trialClicks },
+    { label: '注册用户数', value: s.registerUsers },
     { label: '日均访问', value: s.avgPv },
   ]
 })

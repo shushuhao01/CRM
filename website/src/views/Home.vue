@@ -1,5 +1,20 @@
 <template>
   <div class="home-page">
+    <!-- 公告横幅（置顶/最新一条，可关闭） -->
+    <transition name="notice-banner-fade">
+      <div v-if="bannerNotice" class="notice-banner">
+        <div class="container notice-banner-inner">
+          <router-link :to="`/notice/${bannerNotice.slug || bannerNotice.id}`" class="notice-banner-link">
+            <span class="notice-banner-icon">📢</span>
+            <span v-if="bannerNotice.isTop" class="notice-banner-tag">置顶</span>
+            <span class="notice-banner-text">{{ bannerNotice.title }}</span>
+            <span class="notice-banner-more">查看详情 →</span>
+          </router-link>
+          <button type="button" class="notice-banner-close" aria-label="关闭公告" @click="closeBanner">×</button>
+        </div>
+      </div>
+    </transition>
+
     <!-- Hero Section -->
     <section class="hero">
       <div class="hero-bg">
@@ -28,7 +43,7 @@
             助力企业实现销售业绩持续增长。
           </p>
           <div class="hero-actions">
-            <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary btn-lg">
+            <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary btn-lg" @click="trackEvent('trial')">
               <span>免费试用 {{ trialDays }} 天</span>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -493,63 +508,6 @@
       </div>
     </section>
 
-    <!-- 最新文章 -->
-    <section v-if="siteArticles.length > 0" class="articles-section">
-      <div class="container">
-        <div class="section-title">
-          <h2>最新<span>动态</span></h2>
-          <p>行业洞察、产品更新与销售管理实践</p>
-        </div>
-
-        <div class="articles-grid">
-          <article v-for="item in siteArticles" :key="item.id" class="article-card">
-            <router-link :to="`/blog/${item.slug || item.id}`" class="article-cover">
-              <img v-if="item.cover" :src="item.cover" :alt="item.title" />
-              <div v-else class="article-cover-placeholder">📝</div>
-            </router-link>
-            <div class="article-body">
-              <div class="article-meta">
-                <span v-if="item.category" class="article-category">{{ item.category }}</span>
-                <time v-if="item.publishedAt" :datetime="item.publishedAt">{{ formatHomeDate(item.publishedAt) }}</time>
-              </div>
-              <h3 class="article-title">
-                <router-link :to="`/blog/${item.slug || item.id}`">{{ item.title }}</router-link>
-              </h3>
-              <p class="article-summary">{{ item.summary || '' }}</p>
-            </div>
-          </article>
-        </div>
-
-        <div class="section-more">
-          <router-link to="/blog" class="btn btn-outline">查看更多文章 →</router-link>
-        </div>
-      </div>
-    </section>
-
-    <!-- 最新公告 -->
-    <section v-if="siteNotices.length > 0" class="notices-section">
-      <div class="container">
-        <div class="section-title">
-          <h2>最新<span>公告</span></h2>
-          <p>产品发布、服务通知与站点公告</p>
-        </div>
-
-        <ul class="notices-list">
-          <li v-for="item in siteNotices" :key="item.id" class="notice-row">
-            <router-link :to="`/notice/${item.slug || item.id}`" class="notice-link">
-              <span v-if="item.isTop" class="notice-top">置顶</span>
-              <span class="notice-title">{{ item.title }}</span>
-              <time v-if="item.publishedAt" class="notice-date" :datetime="item.publishedAt">{{ formatHomeDate(item.publishedAt) }}</time>
-            </router-link>
-          </li>
-        </ul>
-
-        <div class="section-more">
-          <router-link to="/notice" class="btn btn-outline">查看全部公告 →</router-link>
-        </div>
-      </div>
-    </section>
-
     <!-- 版本对比 -->
     <section class="versions-section">
       <div class="container">
@@ -595,6 +553,39 @@
             </ul>
             <router-link to="/pricing" class="btn btn-outline">了解更多</router-link>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 最新文章 -->
+    <section v-if="siteArticles.length > 0" class="articles-section">
+      <div class="container">
+        <div class="section-title">
+          <h2>最新<span>动态</span></h2>
+          <p>行业洞察、产品更新与销售管理实践</p>
+        </div>
+
+        <div class="articles-grid">
+          <article v-for="item in siteArticles" :key="item.id" class="article-card">
+            <router-link :to="`/blog/${item.slug || item.id}`" class="article-cover">
+              <img v-if="item.cover" :src="item.cover" :alt="item.title" />
+              <div v-else class="article-cover-placeholder">📝</div>
+            </router-link>
+            <div class="article-body">
+              <div class="article-meta">
+                <span v-if="item.category" class="article-category">{{ item.category }}</span>
+                <time v-if="item.publishedAt" :datetime="item.publishedAt">{{ formatHomeDate(item.publishedAt) }}</time>
+              </div>
+              <h3 class="article-title">
+                <router-link :to="`/blog/${item.slug || item.id}`">{{ item.title }}</router-link>
+              </h3>
+              <p class="article-summary">{{ item.summary || '' }}</p>
+            </div>
+          </article>
+        </div>
+
+        <div class="section-more">
+          <router-link to="/blog" class="btn btn-outline">查看更多文章 →</router-link>
         </div>
       </div>
     </section>
@@ -702,7 +693,7 @@
           <h2>准备好提升您的销售业绩了吗？</h2>
           <p>立即联系我们，体验智能销售管理的魅力</p>
           <div class="cta-actions">
-            <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg">
+            <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg" @click="trackEvent('trial')">
               免费试用 {{ trialDays }} 天
             </router-link>
             <a :href="wechatServiceUrl" target="_blank" class="btn btn-outline-white btn-lg">
@@ -721,7 +712,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { getPackages, type Package } from '@/api/packages'
 import { getWebsiteConfig, type WebsiteConfig } from '@/api/website-config'
-import { getCases, getArticles, getNotices, type SiteCaseItem, type SiteArticleItem, type SiteNoticeItem } from '@/api/site'
+import { getCases, getArticles, getNotices, trackEvent, type SiteCaseItem, type SiteArticleItem, type SiteNoticeItem } from '@/api/site'
 
 const previewVisible = ref(false)
 const previewImage = ref('')
@@ -781,6 +772,29 @@ const packagesData = ref<Package[]>([])
 const siteCases = ref<SiteCaseItem[]>([])
 const siteArticles = ref<SiteArticleItem[]>([])
 const siteNotices = ref<SiteNoticeItem[]>([])
+
+// 公告横幅：取置顶/最新一条，关闭后按公告ID记住不再显示
+const closedNoticeId = ref<string>('')
+try {
+  closedNoticeId.value = localStorage.getItem('site_notice_banner_closed') || ''
+} catch {
+  closedNoticeId.value = ''
+}
+const bannerNotice = computed(() => {
+  const n = siteNotices.value[0]
+  if (!n) return null
+  return String(n.id) === closedNoticeId.value ? null : n
+})
+const closeBanner = () => {
+  const n = siteNotices.value[0]
+  if (!n) return
+  closedNoticeId.value = String(n.id)
+  try {
+    localStorage.setItem('site_notice_banner_closed', String(n.id))
+  } catch {
+    /* 忽略存储异常 */
+  }
+}
 
 // 首页日期格式化
 const formatHomeDate = (v: string) => {
@@ -870,6 +884,11 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss" scoped>
+// 首页容器：作为公告横幅的定位参照
+.home-page {
+  position: relative;
+}
+
 // Hero Section
 .hero {
   position: relative;
@@ -2226,71 +2245,95 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.notices-section {
-  padding: var(--section-padding);
-  background: var(--bg-light);
+.notice-banner {
+  position: absolute;
+  top: 70px; /* 固定导航栏高度，落在导航栏正下方 */
+  left: 0;
+  right: 0;
+  z-index: 900; /* 低于导航栏的 1000 */
+  background: linear-gradient(90deg, #6d5efc 0%, #8b7cff 50%, #6d5efc 100%);
+  color: #fff;
+  font-size: 14px;
+  box-shadow: 0 2px 12px rgba(109, 94, 252, 0.25);
 }
 
-.notices-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  background: #ffffff;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-
-.notice-row {
-  border-bottom: 1px solid var(--border);
-
-  &:last-child {
-    border-bottom: none;
-  }
-}
-
-.notice-link {
+.notice-banner-inner {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 18px 24px;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background: var(--bg-light);
-
-    .notice-title {
-      color: var(--primary);
-    }
-  }
+  padding: 10px 16px;
 }
 
-.notice-top {
+.notice-banner-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  color: #fff;
+  text-decoration: none;
+}
+
+.notice-banner-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.notice-banner-tag {
   flex-shrink: 0;
   font-size: 11px;
-  font-weight: 500;
-  color: #dc2626;
-  background: #fef2f2;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.22);
   padding: 1px 8px;
   border-radius: 10px;
 }
 
-.notice-title {
+.notice-banner-text {
   flex: 1;
   min-width: 0;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 0.2s ease;
 }
 
-.notice-date {
+.notice-banner-more {
   flex-shrink: 0;
   font-size: 13px;
-  color: var(--text-muted);
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+.notice-banner-link:hover .notice-banner-more {
+  opacity: 1;
+}
+
+.notice-banner-close {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.34);
+  }
+}
+
+.notice-banner-fade-enter-active,
+.notice-banner-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.notice-banner-fade-enter-from,
+.notice-banner-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-100%);
 }
 
 .section-more {

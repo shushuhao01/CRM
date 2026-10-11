@@ -312,8 +312,8 @@ export function sendHeartbeat(): void {
   trackPageVisit({ type: 'hb', visitorId: getVisitorId() })
 }
 
-/** 转化埋点：下载 / 购买点击（自动带上访客标识与渠道码，失败不影响前台） */
-export function trackEvent(type: 'download' | 'buy'): void {
+/** 转化埋点：下载 / 购买点击 / 免费试用点击（自动带上访客标识与渠道码，失败不影响前台） */
+export function trackEvent(type: 'download' | 'buy' | 'trial'): void {
   if (typeof window === 'undefined') return
   trackPageVisit({ type, visitorId: getVisitorId(), channelCode: resolveChannelCode() })
 }

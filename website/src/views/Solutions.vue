@@ -385,7 +385,7 @@
           <h2>找到适合您的解决方案</h2>
           <p>联系我们，获取专属行业方案，{{ trialDays }}天免费体验全部功能</p>
           <div class="cta-actions">
-            <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg">免费试用 {{ trialDays }} 天</router-link>
+            <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg" @click="trackEvent('trial')">免费试用 {{ trialDays }} 天</router-link>
             <a :href="wechatServiceUrl" target="_blank" class="btn btn-outline-white btn-lg">联系销售</a>
           </div>
           <p class="cta-note">免费注册 · 无需信用卡 · 专属行业顾问</p>
@@ -399,6 +399,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { getWebsiteConfig, type WebsiteConfig } from '@/api/website-config'
 import { getPackages, type Package } from '@/api/packages'
+import { trackEvent } from '@/api/site'
 
 const config = ref<Partial<WebsiteConfig>>({})
 const wechatServiceUrl = computed(() => config.value.customerServiceUrl || 'https://work.weixin.qq.com/kfid/kfc461ca9f5b45c8d25')

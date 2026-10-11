@@ -38,7 +38,7 @@
 
         <div class="case-actions">
           <router-link to="/cases" class="btn btn-outline">← 返回案例列表</router-link>
-          <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary">免费试用同款方案</router-link>
+          <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary" @click="trackEvent('trial')">免费试用同款方案</router-link>
         </div>
       </article>
     </div>
@@ -48,7 +48,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { getCase, applySeoMeta, type SiteCaseDetail } from '@/api/site'
+import { getCase, applySeoMeta, trackEvent, type SiteCaseDetail } from '@/api/site'
 
 const route = useRoute()
 const item = ref<SiteCaseDetail | null>(null)

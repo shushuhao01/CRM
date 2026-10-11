@@ -56,6 +56,7 @@
                       :to="`/register?plan=${pkg.code}`"
                       class="pkg-btn"
                       :class="{ primary: pkg.is_recommended }"
+                      @click="pkg.is_trial && trackEvent('trial')"
                     >
                       {{ pkg.is_trial ? '免费试用' : pkg.billing_cycle === 'once' ? '立即购买' : '立即订购' }}
                     </router-link>
@@ -110,6 +111,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { getPackages, type Package } from '@/api/packages'
+import { trackEvent } from '@/api/site'
 
 const currentType = ref<'saas' | 'private' | 'community'>('saas')
 const loading = ref(true)

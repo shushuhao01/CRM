@@ -16,6 +16,7 @@
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { SiteVisitLog, SiteStatsDaily, SiteChannelStatsDaily, SiteOnline } from '../entities/SiteEntities';
+import { Tenant } from '../entities/Tenant';
 import { siteService } from './SiteService';
 import { v4 as uuidv4 } from 'uuid';
 import { defaultDbFile, loadContentFromFile, newWithBuffer, isValidIp } from 'ip2region-ts';
@@ -269,6 +270,8 @@ export interface AnalyticsSummary {
   ips: number;
   downloads: number;
   buyClicks: number;
+  trialClicks: number;
+  registerUsers: number;
   todayPv: number;
   todayUv: number;
   avgPv: number;
@@ -304,6 +307,7 @@ export interface AnalyticsDaily {
   uv: number;
   downloads: number;
   buyClicks: number;
+  trialClicks: number;
 }
 
 export interface SiteAnalytics {
@@ -472,27 +476,42 @@ export async function getSiteAnalytics(
     for (const d of details) detailByIp.set(d.ip || '', d);
   }
 
-  // 下载 / 购买点击：渠道视图读渠道日聚合表，总览读全站日聚合表
-  const statMap = new Map<string, { downloads: number; buyClicks: number }>();
+  // 下载 / 购买点击 / 免费试用点击：渠道视图读渠道日聚合表，总览读全站日聚合表
+  const statMap = new Map<string, { downloads: number; buyClicks: number; trialClicks: number }>();
   let downloads = 0;
   let buyClicks = 0;
+  let trialClicks = 0;
   if (ch) {
     const chRows = await AppDataSource.getRepository(SiteChannelStatsDaily)
       .createQueryBuilder('s')
       .where('s.stat_date >= :start', { start })
       .andWhere('s.channel_code = :channelCode', { channelCode: ch })
       .getMany();
-    for (const s of chRows) statMap.set(s.statDate, { downloads: s.downloads || 0, buyClicks: s.buyClicks || 0 });
+    for (const s of chRows) statMap.set(s.statDate, { downloads: s.downloads || 0, buyClicks: s.buyClicks || 0, trialClicks: s.trialClicks || 0 });
     downloads = chRows.reduce((a, s) => a + (s.downloads || 0), 0);
     buyClicks = chRows.reduce((a, s) => a + (s.buyClicks || 0), 0);
+    trialClicks = chRows.reduce((a, s) => a + (s.trialClicks || 0), 0);
   } else {
     const statRows = await statsRepo()
       .createQueryBuilder('s')
       .where('s.stat_date >= :start', { start })
       .getMany();
-    for (const s of statRows) statMap.set(s.statDate, { downloads: s.downloads || 0, buyClicks: s.buyClicks || 0 });
+    for (const s of statRows) statMap.set(s.statDate, { downloads: s.downloads || 0, buyClicks: s.buyClicks || 0, trialClicks: s.trialClicks || 0 });
     downloads = statRows.reduce((a, s) => a + (s.downloads || 0), 0);
     buyClicks = statRows.reduce((a, s) => a + (s.buyClicks || 0), 0);
+    trialClicks = statRows.reduce((a, s) => a + (s.trialClicks || 0), 0);
+  }
+
+  // 注册用户数：所选时间范围内 tenants 表新增（区别于渠道视图，注册不区分渠道，全局口径）
+  let registerUsers = 0;
+  try {
+    registerUsers = await AppDataSource.getRepository(Tenant)
+      .createQueryBuilder('t')
+      .where('DATE(t.createdAt) >= :start', { start })
+      .andWhere('DATE(t.createdAt) <= :end', { end })
+      .getCount();
+  } catch {
+    registerUsers = 0;
   }
 
   // 补齐日期序列
@@ -537,6 +556,7 @@ export async function getSiteAnalytics(
       uv: trendUvMap.get(d) || 0,
       downloads: s?.downloads || 0,
       buyClicks: s?.buyClicks || 0,
+      trialClicks: s?.trialClicks || 0,
     };
   });
 
@@ -548,6 +568,8 @@ export async function getSiteAnalytics(
       ips: toNum(sumRow?.ips),
       downloads,
       buyClicks,
+      trialClicks,
+      registerUsers,
       todayPv: toNum(todayRow?.pv),
       todayUv: toNum(todayRow?.uv),
       avgPv: range > 0 ? Math.round(pv / range) : 0,

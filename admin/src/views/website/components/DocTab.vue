@@ -34,7 +34,7 @@
       <el-table-column label="更新时间" width="170">
         <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right" class-name="op-col">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">查看</el-button>
           <el-button v-if="canEdit" link type="primary" @click="openEdit(row, true)">编辑</el-button>
@@ -290,5 +290,17 @@ onMounted(load)
 
 .toolbar-right {
   margin-left: auto;
+}
+
+:deep(.op-col .cell) {
+  white-space: nowrap;
+}
+
+:deep(.op-col .el-button.is-link) {
+  padding: 0 6px;
+}
+
+:deep(.op-col .el-button + .el-button) {
+  margin-left: 4px;
 }
 </style>

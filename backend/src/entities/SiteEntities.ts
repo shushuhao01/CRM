@@ -406,6 +406,9 @@ export class SiteStatsDaily {
   @Column({ name: 'buy_clicks', type: 'int', default: 0, comment: '购买点击' })
   buyClicks!: number;
 
+  @Column({ name: 'trial_clicks', type: 'int', default: 0, comment: '免费试用点击' })
+  trialClicks!: number;
+
   @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt!: Date;
 
@@ -515,6 +518,9 @@ export class SiteChannelStatsDaily {
 
   @Column({ name: 'buy_clicks', type: 'int', unsigned: true, default: 0, comment: '购买点击' })
   buyClicks!: number;
+
+  @Column({ name: 'trial_clicks', type: 'int', unsigned: true, default: 0, comment: '免费试用点击' })
+  trialClicks!: number;
 }
 
 /**

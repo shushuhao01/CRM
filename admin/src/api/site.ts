@@ -134,6 +134,8 @@ export interface SiteAnalytics {
     ips: number
     downloads: number
     buyClicks: number
+    trialClicks: number
+    registerUsers: number
     todayPv: number
     todayUv: number
     avgPv: number
@@ -150,7 +152,7 @@ export interface SiteAnalytics {
   isps: NameValue[]
   pages: { path: string; pv: number; uv: number }[]
   ips: { ip: string; province: string; city: string; isp: string; pv: number; lastPath: string; lastTime: string }[]
-  daily: { date: string; pv: number; uv: number; downloads: number; buyClicks: number }[]
+  daily: { date: string; pv: number; uv: number; downloads: number; buyClicks: number; trialClicks: number }[]
 }
 
 /** 渠道链接（含完整推广短链地址） */

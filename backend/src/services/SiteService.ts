@@ -271,6 +271,7 @@ class SiteService {
         \`channel_code\` VARCHAR(32) NOT NULL DEFAULT '' COMMENT '渠道编码',
         \`downloads\` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '下载点击',
         \`buy_clicks\` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '购买点击',
+        \`trial_clicks\` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '免费试用点击',
         PRIMARY KEY (\`id\`),
         UNIQUE KEY \`uk_scsd_date_channel\` (\`stat_date\`, \`channel_code\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官网渠道日聚合统计'
@@ -392,7 +393,14 @@ class SiteService {
       { name: 'top_pages', sql: "ADD COLUMN `top_pages` JSON NULL COMMENT '热门页面(JSON)' AFTER `avg_duration`" },
       { name: 'top_referers', sql: "ADD COLUMN `top_referers` JSON NULL COMMENT '来源分布(JSON)' AFTER `top_pages`" },
       { name: 'downloads', sql: "ADD COLUMN `downloads` INT NOT NULL DEFAULT 0 COMMENT '下载点击' AFTER `top_referers`" },
-      { name: 'buy_clicks', sql: "ADD COLUMN `buy_clicks` INT NOT NULL DEFAULT 0 COMMENT '购买点击' AFTER `downloads`" }
+      { name: 'buy_clicks', sql: "ADD COLUMN `buy_clicks` INT NOT NULL DEFAULT 0 COMMENT '购买点击' AFTER `downloads`" },
+      { name: 'trial_clicks', sql: "ADD COLUMN `trial_clicks` INT NOT NULL DEFAULT 0 COMMENT '免费试用点击' AFTER `buy_clicks`" }
+    ]);
+
+    await this.ensureColumns('site_channel_stats_daily', [
+      { name: 'downloads', sql: "ADD COLUMN `downloads` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '下载点击' AFTER `channel_code`" },
+      { name: 'buy_clicks', sql: "ADD COLUMN `buy_clicks` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '购买点击' AFTER `downloads`" },
+      { name: 'trial_clicks', sql: "ADD COLUMN `trial_clicks` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '免费试用点击' AFTER `buy_clicks`" }
     ]);
 
     log.info('[Site] 表结构自检完成（自动建表+补列）');
@@ -457,22 +465,22 @@ class SiteService {
 
   // ==================== 访问统计 ====================
 
-  /** 按今日累计站点日统计（PV/UV/下载点击/购买点击） */
-  async bumpStat(field: 'pv' | 'uv' | 'downloads' | 'buyClicks', delta = 1): Promise<void> {
+  /** 按今日累计站点日统计（PV/UV/下载点击/购买点击/免费试用点击） */
+  async bumpStat(field: 'pv' | 'uv' | 'downloads' | 'buyClicks' | 'trialClicks', delta = 1): Promise<void> {
     await this.ensureTables();
     const repo = AppDataSource.getRepository(SiteStatsDaily);
     const now = new Date();
     const statDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     let row = await repo.findOne({ where: { statDate } });
     if (!row) {
-      row = repo.create({ id: uuidv4(), statDate, pv: 0, uv: 0, ipCount: 0, newVisitors: 0, avgDuration: 0, downloads: 0, buyClicks: 0 });
+      row = repo.create({ id: uuidv4(), statDate, pv: 0, uv: 0, ipCount: 0, newVisitors: 0, avgDuration: 0, downloads: 0, buyClicks: 0, trialClicks: 0 });
     }
     row[field] = (Number(row[field]) || 0) + delta;
     await repo.save(row);
   }
 
-  /** 按今日累计渠道日统计（下载点击/购买点击） */
-  async bumpChannelStat(channelCode: string, field: 'downloads' | 'buyClicks', delta = 1): Promise<void> {
+  /** 按今日累计渠道日统计（下载点击/购买点击/免费试用点击） */
+  async bumpChannelStat(channelCode: string, field: 'downloads' | 'buyClicks' | 'trialClicks', delta = 1): Promise<void> {
     await this.ensureTables();
     const code = (channelCode || '').trim().toLowerCase().slice(0, 32);
     if (!code) return;
@@ -481,7 +489,7 @@ class SiteService {
     const statDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     let row = await repo.findOne({ where: { statDate, channelCode: code } });
     if (!row) {
-      row = repo.create({ statDate, channelCode: code, downloads: 0, buyClicks: 0 });
+      row = repo.create({ statDate, channelCode: code, downloads: 0, buyClicks: 0, trialClicks: 0 });
     }
     row[field] = (Number(row[field]) || 0) + delta;
     await repo.save(row);

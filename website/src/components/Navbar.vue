@@ -91,7 +91,7 @@
             </transition>
           </div>
         </template>
-        <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary btn-sm" @click="trackBuy">免费试用</router-link>
+        <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary btn-sm" @click="trackTrial">免费试用</router-link>
       </div>
 
       <!-- 移动端菜单按钮 -->
@@ -123,8 +123,8 @@ const userDropdownRef = ref<HTMLElement | null>(null)
 const loginDropdownRef = ref<HTMLElement | null>(null)
 const resourceDropdownRef = ref<HTMLElement | null>(null)
 
-/** 购买/转化埋点（用于后台「购买点击」统计） */
-const trackBuy = () => trackEvent('buy')
+/** 免费试用按钮埋点（用于后台「免费试用点击」统计） */
+const trackTrial = () => trackEvent('trial')
 
 const memberLoggedIn = computed(() => {
   void memberCheckKey.value

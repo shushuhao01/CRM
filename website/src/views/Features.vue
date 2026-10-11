@@ -35,7 +35,7 @@
       <div class="container">
         <h2>立即体验全部功能</h2>
         <p>{{ trialDays }}天免费试用，无需信用卡</p>
-        <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg">免费试用</router-link>
+        <router-link to="/register?plan=FREE_TRIAL" class="btn btn-white btn-lg" @click="trackEvent('trial')">免费试用</router-link>
       </div>
     </section>
   </div>
@@ -44,6 +44,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { getPackages, type Package } from '@/api/packages'
+import { trackEvent } from '@/api/site'
 
 const packagesData = ref<Package[]>([])
 const trialDays = computed(() => {

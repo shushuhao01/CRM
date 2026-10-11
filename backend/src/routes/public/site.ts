@@ -313,10 +313,10 @@ router.get('/channel/resolve/:code', async (req: Request, res: Response) => {
 
 /**
  * POST /api/v1/public/site/track
- * body: { type?: 'pv'|'hb'|'uv'|'download'|'buy', path?, referer?, visitorId?, channelCode? }
+ * body: { type?: 'pv'|'hb'|'uv'|'download'|'buy'|'trial', path?, referer?, visitorId?, channelCode? }
  * - pv：写访问明细 + PV（当日首访累加 UV）+ 刷新在线
  * - hb：仅刷新实时在线（不计 PV/UV）
- * - download / buy：累加对应点击（带渠道码时同时累加渠道维度）
+ * - download / buy / trial：累加对应点击（带渠道码时同时累加渠道维度）
  */
 router.post('/track', async (req: Request, res: Response) => {
   try {
@@ -358,17 +358,19 @@ router.post('/track', async (req: Request, res: Response) => {
       return res.json({ success: true });
     }
 
-    const map: Record<string, 'uv' | 'downloads' | 'buyClicks'> = {
+    const map: Record<string, 'uv' | 'downloads' | 'buyClicks' | 'trialClicks'> = {
       uv: 'uv',
       download: 'downloads',
-      buy: 'buyClicks'
+      buy: 'buyClicks',
+      trial: 'trialClicks'
     };
     const field = map[type];
     if (field) {
       try {
         await siteService.bumpStat(field, 1);
-        if (channelCode && (type === 'download' || type === 'buy')) {
-          await siteService.bumpChannelStat(channelCode, type === 'download' ? 'downloads' : 'buyClicks', 1);
+        const channelField = type === 'download' ? 'downloads' : type === 'buy' ? 'buyClicks' : type === 'trial' ? 'trialClicks' : null;
+        if (channelCode && channelField) {
+          await siteService.bumpChannelStat(channelCode, channelField, 1);
         }
       } catch {
         // 统计失败不影响前台

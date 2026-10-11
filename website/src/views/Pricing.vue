@@ -112,7 +112,7 @@
               :to="`/register?plan=${pkg.code}`"
               class="btn"
               :class="pkg.is_recommended ? 'btn-primary' : 'btn-outline'"
-              @click="trackBuy"
+              @click="pkg.is_trial ? trackTrial() : trackBuy()"
             >
               {{ pkg.is_trial ? '开始试用' : `选择${pkg.name}` }}
             </router-link>
@@ -465,8 +465,10 @@ import { ref, computed, onMounted } from 'vue'
 import { getPackages, getYearlyPrice, getYearlyTotal, getYearlySaving, getYearlyPromoText, type Package } from '@/api/packages'
 import { trackEvent } from '@/api/site'
 
-/** 购买/转化埋点（用于后台「购买点击」统计） */
+/** 购买埋点（用于后台「购买点击」统计） */
 const trackBuy = () => trackEvent('buy')
+/** 免费试用按钮埋点（用于后台「免费试用点击」统计） */
+const trackTrial = () => trackEvent('trial')
 
 const currentVersion = ref<'saas' | 'private' | 'community'>('saas')
 const isYearly = ref(false)
