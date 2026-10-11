@@ -226,8 +226,9 @@ export const MENU_PERMISSION_MAP: Record<string, string> = {
   '/versions/changelog': PERMISSIONS.VERSION_CHANGELOG_VIEW,
   // 接口管理
   '/api/list': PERMISSIONS.API_LIST_VIEW,
-  // 官网管理（一级菜单）
-  '/website': PERMISSIONS.WEBSITE_SETTINGS_VIEW,
+  // 官网管理
+  '/website/basic': PERMISSIONS.WEBSITE_SETTINGS_VIEW,
+  '/website/stats': PERMISSIONS.WEBSITE_STATS_VIEW,
   // 系统设置
   '/settings/admins': PERMISSIONS.SETTINGS_ADMINS_VIEW,
   '/settings/roles': PERMISSIONS.SETTINGS_ROLES_VIEW,

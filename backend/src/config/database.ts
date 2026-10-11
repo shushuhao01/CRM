@@ -137,7 +137,7 @@ import { ProductSku } from '../entities/ProductSku';
 import { ProductSpecGroup } from '../entities/ProductSpecGroup';
 import { StockAdjustment } from '../entities/StockAdjustment';
 // 官网管理
-import { SiteArticle, SiteCase, SiteDoc, SiteSetting, SiteNav, SiteVisitLog, SiteStatsDaily } from '../entities/SiteEntities';
+import { SiteArticle, SiteCase, SiteDoc, SiteSetting, SiteNav, SiteVisitLog, SiteStatsDaily, SiteMedia } from '../entities/SiteEntities';
 import { log } from './logger';
 
 // ==================== 环境配置智能加载 ====================
@@ -195,7 +195,7 @@ const entities = [
   UserSession, CallProspect, WecomChatAuditMark,
   ProductSku, ProductSpecGroup, StockAdjustment,
   // 官网管理
-  SiteArticle, SiteCase, SiteDoc, SiteSetting, SiteNav, SiteVisitLog, SiteStatsDaily
+  SiteArticle, SiteCase, SiteDoc, SiteSetting, SiteNav, SiteVisitLog, SiteStatsDaily, SiteMedia
 ];
 
 // ==================== MySQL 数据库配置 ====================

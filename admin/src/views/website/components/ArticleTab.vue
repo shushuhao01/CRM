@@ -44,11 +44,13 @@
       <el-table-column label="发布时间" width="170">
         <template #default="{ row }">{{ formatTime(row.publishedAt || row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="190" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">查看</el-button>
-          <el-button v-if="canEdit" link type="primary" @click="openEdit(row, true)">编辑</el-button>
-          <el-button v-if="canEdit" link type="danger" @click="handleDelete(row)">删除</el-button>
+          <div class="op-actions">
+            <el-button link type="primary" @click="openEdit(row)">查看</el-button>
+            <el-button v-if="canEdit" link type="primary" @click="openEdit(row, true)">编辑</el-button>
+            <el-button v-if="canEdit" link type="danger" @click="handleDelete(row)">删除</el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -371,5 +373,15 @@ onMounted(load)
 
 .muted {
   color: #c0c4cc;
+}
+
+.op-actions {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+
+  :deep(.el-button + .el-button) {
+    margin-left: 8px;
+  }
 }
 </style>

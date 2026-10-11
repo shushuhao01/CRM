@@ -15,13 +15,19 @@
       class="editor-content"
       :style="{ height }"
     />
+    <MediaPicker v-model="pickerVisible" @select="handlePickMedia" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, shallowRef, onBeforeUnmount, watch } from 'vue'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+import { Boot } from '@wangeditor/editor'
+import type { IToolbarConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
+import { ElMessage } from 'element-plus'
+import { siteApi } from '@/api/site'
+import MediaPicker from './MediaPicker.vue'
 
 interface Props {
   modelValue: string
@@ -43,15 +49,70 @@ const emit = defineEmits<{
 const editorRef = shallowRef()
 const valueHtml = ref(props.modelValue)
 
-// 工具栏配置
-const toolbarConfig = {
-  excludeKeys: ['group-video', 'insertImage', 'uploadImage']
+// ==================== 素材库（自定义工具栏菜单） ====================
+// 桥接：编辑器实例 → 打开素材库对话框
+const openMediaPickerMap = new WeakMap<object, () => void>()
+
+let mediaMenuRegistered = false
+/** 注册「素材库」自定义菜单（全局仅需注册一次） */
+function ensureMediaMenu() {
+  if (mediaMenuRegistered) return
+  mediaMenuRegistered = true
+  Boot.registerMenu({
+    key: 'siteMedia',
+    factory: () => ({
+      title: '素材库',
+      tag: 'button',
+      iconSvg:
+        '<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="1em" height="1em"><path fill="currentColor" d="M912 192H112a48 48 0 0 0-48 48v544a48 48 0 0 0 48 48h800a48 48 0 0 0 48-48V240a48 48 0 0 0-48-48z m-16 576H128V256h768v512z"/><path fill="currentColor" d="M368 512a64 64 0 1 0 0-128 64 64 0 0 0 0 128z"/><path fill="currentColor" d="M800 400 624 576l-96-96-224 224h432l64-64V400z"/></svg>',
+      getValue: () => '',
+      isActive: () => false,
+      isDisabled: () => false,
+      exec: (editor: any) => {
+        const open = openMediaPickerMap.get(editor)
+        if (open) open()
+      }
+    })
+  })
+}
+ensureMediaMenu()
+
+const pickerVisible = ref(false)
+
+/** 本地上传图片：走官网媒体库接口 */
+async function customUploadImage(
+  file: File,
+  insertFn: (url: string, alt: string, href: string) => void
+) {
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await siteApi.uploadSiteImage(fd)
+    const url = res.data?.path
+    if (url) {
+      insertFn(url, file.name, '')
+    } else {
+      ElMessage.error('图片上传失败')
+    }
+  } catch {
+    // 拦截器已提示
+  }
+}
+
+// 工具栏配置（启用本地图片上传 + 素材库选择）
+const toolbarConfig: Partial<IToolbarConfig> = {
+  excludeKeys: ['group-video', 'group-image'],
+  insertKeys: { index: 22, keys: ['uploadImage', 'siteMedia'] }
 }
 
 // 编辑器配置
 const editorConfig = {
   placeholder: props.placeholder,
-  MENU_CONF: {}
+  MENU_CONF: {
+    uploadImage: {
+      customUpload: customUploadImage
+    }
+  }
 }
 
 onBeforeUnmount(() => {
@@ -62,10 +123,21 @@ onBeforeUnmount(() => {
 
 const handleCreated = (editor: any) => {
   editorRef.value = editor
+  openMediaPickerMap.set(editor, () => {
+    pickerVisible.value = true
+  })
 }
 
 const handleChange = () => {
   emit('update:modelValue', valueHtml.value)
+}
+
+/** 从素材库选中图片后插入编辑器 */
+function handlePickMedia(url: string) {
+  const editor = editorRef.value
+  if (!editor || !url) return
+  editor.dangerouslyInsertHtml(`<img src="${url}" alt="" />`)
+  editor.focus()
 }
 
 watch(() => props.modelValue, (newVal) => {

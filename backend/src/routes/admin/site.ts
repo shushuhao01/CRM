@@ -4,9 +4,23 @@
  * 挂载于 /api/v1/admin/site
  */
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import QRCode from 'qrcode';
 import { getDataSource } from '../../config/database';
-import { SiteArticle, SiteCase, SiteDoc, SiteNav } from '../../entities/SiteEntities';
+import { SiteArticle, SiteCase, SiteDoc, SiteNav, SiteMedia } from '../../entities/SiteEntities';
 import { siteService } from '../../services/SiteService';
+import { getSiteAnalytics, listSiteVisits, getSiteOnlineCount } from '../../services/SiteAnalyticsService';
+import {
+  listChannels,
+  createChannel,
+  updateChannel,
+  deleteChannel,
+  getChannelAnalytics,
+  listChannelVisits,
+  buildShortUrl
+} from '../../services/ChannelService';
 import { log } from '../../config/logger';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -600,6 +614,289 @@ router.post('/seo-push', async (req: Request, res: Response) => {
   } catch (error: any) {
     log.error('[Admin官网] SEO推送失败:', error);
     res.status(500).json({ success: false, message: '推送失败: ' + (error.message || '') });
+  }
+});
+
+// ==================== 官网数据分析（流量分析） ====================
+
+/** GET /api/v1/admin/site/analytics?days=30&start=&end= —— 多维流量聚合 */
+router.get('/analytics', async (req: Request, res: Response) => {
+  try {
+    const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
+    const start = String(req.query.start || '').trim();
+    const end = String(req.query.end || '').trim();
+    const data = await getSiteAnalytics(days, '', start, end);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    log.error('[Admin官网] 获取流量分析失败:', error);
+    res.status(500).json({ success: false, message: '获取流量分析失败' });
+  }
+});
+
+/** GET /api/v1/admin/site/online?minutes=5 —— 实时在线访客数 */
+router.get('/online', async (req: Request, res: Response) => {
+  try {
+    const minutes = Math.min(1440, Math.max(1, Number(req.query.minutes) || 5));
+    const online = await getSiteOnlineCount(minutes);
+    res.json({ success: true, data: { online, minutes } });
+  } catch (error: any) {
+    log.error('[Admin官网] 获取在线访客失败:', error);
+    res.status(500).json({ success: false, message: '获取在线访客失败' });
+  }
+});
+
+/** GET /api/v1/admin/site/visits?page=&pageSize=&ip=&path=&device=&source=&keyword=&start=&end= */
+router.get('/visits', async (req: Request, res: Response) => {
+  try {
+    const { page, pageSize } = parsePage(req);
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const data = await listSiteVisits({
+      page,
+      pageSize,
+      ip: str(req.query.ip),
+      path: str(req.query.path),
+      device: str(req.query.device),
+      source: str(req.query.source),
+      keyword: str(req.query.keyword),
+      start: str(req.query.start),
+      end: str(req.query.end)
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    log.error('[Admin官网] 获取访问明细失败:', error);
+    res.status(500).json({ success: false, message: '获取访问明细失败' });
+  }
+});
+
+// ==================== 官网渠道链接（推广短链） ====================
+
+/** 计算短链展示根地址：优先站点配置域名，为空时回退请求 Host */
+async function channelBase(req: Request): Promise<string> {
+  const settings = await siteService.getSettings();
+  const domain = (settings.siteUrl || settings.site_url || settings.site_domain || '').trim();
+  if (domain) return domain.replace(/\/+$/, '');
+  const host = String(req.headers.host || '');
+  if (!host) return '';
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+  return `${proto}://${host}`;
+}
+
+/** GET /api/v1/admin/site/channels —— 渠道列表（含完整短链地址） */
+router.get('/channels', async (req: Request, res: Response) => {
+  try {
+    const { page, pageSize } = parsePage(req);
+    const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : '';
+    const data = await listChannels({ page, pageSize, keyword });
+    const base = await channelBase(req);
+    const list = data.list.map((r) => ({ ...r, shortUrl: buildShortUrl(r.code, base) }));
+    res.json({ success: true, data: { ...data, list } });
+  } catch (error: any) {
+    log.error('[Admin官网] 获取渠道列表失败:', error);
+    res.status(500).json({ success: false, message: '获取渠道列表失败' });
+  }
+});
+
+/** POST /api/v1/admin/site/channels —— 新建渠道链接 */
+router.post('/channels', async (req: Request, res: Response) => {
+  try {
+    const b = req.body || {};
+    const row = await createChannel({
+      name: String(b.name || ''),
+      code: b.code ? String(b.code) : '',
+      channel: b.channel ? String(b.channel) : '',
+      targetPath: b.targetPath ? String(b.targetPath) : '/',
+      remark: b.remark ? String(b.remark) : null,
+      enabled: Number(b.enabled) === 0 ? 0 : 1
+    });
+    const base = await channelBase(req);
+    res.json({ success: true, message: '保存成功', data: { ...row, shortUrl: buildShortUrl(row.code, base) } });
+  } catch (error: any) {
+    log.error('[Admin官网] 创建渠道链接失败:', error);
+    res.status(400).json({ success: false, message: error.message || '创建失败' });
+  }
+});
+
+/** PUT /api/v1/admin/site/channels/:id —— 更新渠道链接 */
+router.put('/channels/:id', async (req: Request, res: Response) => {
+  try {
+    const b = req.body || {};
+    const row = await updateChannel(req.params.id, {
+      name: b.name === undefined ? undefined : String(b.name),
+      code: b.code === undefined ? undefined : String(b.code),
+      channel: b.channel === undefined ? undefined : String(b.channel),
+      targetPath: b.targetPath === undefined ? undefined : String(b.targetPath),
+      remark: b.remark === undefined ? undefined : (b.remark ? String(b.remark) : null),
+      enabled: b.enabled === undefined ? undefined : (Number(b.enabled) === 0 ? 0 : 1)
+    });
+    const base = await channelBase(req);
+    res.json({ success: true, message: '更新成功', data: { ...row, shortUrl: buildShortUrl(row.code, base) } });
+  } catch (error: any) {
+    log.error('[Admin官网] 更新渠道链接失败:', error);
+    res.status(400).json({ success: false, message: error.message || '更新失败' });
+  }
+});
+
+/** DELETE /api/v1/admin/site/channels/:id —— 删除渠道链接 */
+router.delete('/channels/:id', async (req: Request, res: Response) => {
+  try {
+    const okDel = await deleteChannel(req.params.id);
+    if (!okDel) return res.status(404).json({ success: false, message: '渠道链接不存在' });
+    res.json({ success: true, message: '删除成功' });
+  } catch (error: any) {
+    log.error('[Admin官网] 删除渠道链接失败:', error);
+    res.status(500).json({ success: false, message: '删除失败' });
+  }
+});
+
+/** GET /api/v1/admin/site/channels/:code/analytics —— 渠道流量分析 */
+router.get('/channels/:code/analytics', async (req: Request, res: Response) => {
+  try {
+    const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
+    const start = String(req.query.start || '').trim();
+    const end = String(req.query.end || '').trim();
+    const data = await getChannelAnalytics(String(req.params.code || ''), days, start, end);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    log.error('[Admin官网] 获取渠道分析失败:', error);
+    res.status(500).json({ success: false, message: '获取渠道分析失败' });
+  }
+});
+
+/** GET /api/v1/admin/site/channels/:code/visits —— 渠道访问明细 */
+router.get('/channels/:code/visits', async (req: Request, res: Response) => {
+  try {
+    const { page, pageSize } = parsePage(req);
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const data = await listChannelVisits(String(req.params.code || ''), {
+      page,
+      pageSize,
+      ip: str(req.query.ip),
+      path: str(req.query.path),
+      device: str(req.query.device),
+      source: str(req.query.source),
+      keyword: str(req.query.keyword),
+      start: str(req.query.start),
+      end: str(req.query.end)
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    log.error('[Admin官网] 获取渠道访问明细失败:', error);
+    res.status(500).json({ success: false, message: '获取渠道访问明细失败' });
+  }
+});
+
+/** GET /api/v1/admin/site/channels/:code/qrcode —— 渠道二维码（PNG DataURL） */
+router.get('/channels/:code/qrcode', async (req: Request, res: Response) => {
+  try {
+    const code = String(req.params.code || '');
+    const base = await channelBase(req);
+    const url = buildShortUrl(code, base);
+    const dataUrl = await QRCode.toDataURL(url, { width: 320, margin: 2, errorCorrectionLevel: 'M' });
+    res.json({ success: true, data: { code, url, dataUrl } });
+  } catch (error: any) {
+    log.error('[Admin官网] 生成渠道二维码失败:', error);
+    res.status(500).json({ success: false, message: error.message || '二维码生成失败' });
+  }
+});
+
+// ==================== 官网媒体库（富文本素材库） ====================
+
+const siteMediaBaseDir = path.join(process.cwd(), 'uploads', 'site');
+
+const siteMediaStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    if (!fs.existsSync(siteMediaBaseDir)) {
+      fs.mkdirSync(siteMediaBaseDir, { recursive: true });
+    }
+    cb(null, siteMediaBaseDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${uuidv4()}${ext}`);
+  }
+});
+
+const SITE_MEDIA_ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+
+const siteMediaUpload = multer({
+  storage: siteMediaStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (SITE_MEDIA_ALLOWED_MIME.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('仅支持 jpg、png、gif、webp、svg 格式图片'));
+    }
+  }
+});
+
+/** GET /api/v1/admin/site/media?page=&pageSize=&keyword= —— 媒体库列表 */
+router.get('/media', async (req: Request, res: Response) => {
+  try {
+    const { page, pageSize } = parsePage(req);
+    const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : '';
+    const repo = getDataSource()!.getRepository(SiteMedia);
+    const qb = repo.createQueryBuilder('m');
+    if (keyword) {
+      qb.where('m.filename LIKE :kw', { kw: `%${keyword}%` });
+    }
+    qb.orderBy('m.createdAt', 'DESC').skip((page - 1) * pageSize).take(pageSize);
+    const [list, total] = await qb.getManyAndCount();
+    res.json({ success: true, data: { list, total, page, pageSize } });
+  } catch (error: any) {
+    log.error('[Admin官网] 获取媒体库失败:', error);
+    res.status(500).json({ success: false, message: '获取媒体库失败' });
+  }
+});
+
+/** POST /api/v1/admin/site/media/upload —— 上传图片到媒体库 */
+router.post('/media/upload', siteMediaUpload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const file = (req as any).file as Express.Multer.File | undefined;
+    if (!file) {
+      return res.status(400).json({ success: false, message: '未接收到文件' });
+    }
+    const url = `/uploads/site/${file.filename}`;
+    const repo = getDataSource()!.getRepository(SiteMedia);
+    const entity = repo.create({
+      filename: file.originalname,
+      path: url,
+      size: file.size,
+      mime: file.mimetype,
+      uploadedBy: (req as any).user?.id || undefined
+    });
+    const saved = await repo.save(entity);
+    res.json({ success: true, data: saved, message: '上传成功' });
+  } catch (error: any) {
+    log.error('[Admin官网] 媒体上传失败:', error);
+    res.status(500).json({ success: false, message: error.message || '上传失败' });
+  }
+});
+
+/** DELETE /api/v1/admin/site/media/:id —— 删除媒体 */
+router.delete('/media/:id', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id || '');
+    const repo = getDataSource()!.getRepository(SiteMedia);
+    const item = await repo.findOne({ where: { id } });
+    if (!item) {
+      return res.status(404).json({ success: false, message: '文件不存在' });
+    }
+    // 尝试删除物理文件（仅限 uploads/site 目录内）
+    try {
+      const rel = (item.path || '').replace(/^\/uploads\//, '');
+      const abs = path.join(process.cwd(), 'uploads', rel);
+      if (abs.startsWith(siteMediaBaseDir) && fs.existsSync(abs)) {
+        fs.unlinkSync(abs);
+      }
+    } catch (e: any) {
+      log.warn('[Admin官网] 删除媒体物理文件失败:', e.message);
+    }
+    await repo.delete({ id });
+    res.json({ success: true, message: '删除成功' });
+  } catch (error: any) {
+    log.error('[Admin官网] 删除媒体失败:', error);
+    res.status(500).json({ success: false, message: '删除失败' });
   }
 });
 

@@ -34,7 +34,6 @@
         <router-link to="/pricing" class="nav-link" @click="menuOpen = false">价格方案</router-link>
         <router-link to="/compare" class="nav-link" @click="menuOpen = false">版本对比</router-link>
         <router-link to="/solutions" class="nav-link" @click="menuOpen = false">解决方案</router-link>
-        <router-link to="/cases" class="nav-link" @click="menuOpen = false">客户案例</router-link>
         <div
           class="nav-dropdown"
           ref="resourceDropdownRef"
@@ -50,7 +49,7 @@
             <div v-show="showResourceMenu" class="nav-dropdown-menu">
               <router-link to="/blog" class="dropdown-item" @click="closeResourceMenu">📝 博客文章</router-link>
               <router-link to="/docs" class="dropdown-item" @click="closeResourceMenu">📚 帮助文档</router-link>
-              <router-link to="/notice" class="dropdown-item" @click="closeResourceMenu">📢 更新日志</router-link>
+              <router-link to="/cases" class="dropdown-item" @click="closeResourceMenu">🏆 客户案例</router-link>
             </div>
           </transition>
         </div>
@@ -92,7 +91,7 @@
             </transition>
           </div>
         </template>
-        <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary btn-sm">免费试用</router-link>
+        <router-link to="/register?plan=FREE_TRIAL" class="btn btn-primary btn-sm" @click="trackBuy">免费试用</router-link>
       </div>
 
       <!-- 移动端菜单按钮 -->
@@ -110,6 +109,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { isMemberLoggedIn, getMemberTenant, memberLogout } from '@/api/member'
 import { getWebsiteConfig } from '@/api/website-config'
+import { trackEvent } from '@/api/site'
 
 const router = useRouter()
 const isScrolled = ref(false)
@@ -122,6 +122,9 @@ const memberCheckKey = ref(0)
 const userDropdownRef = ref<HTMLElement | null>(null)
 const loginDropdownRef = ref<HTMLElement | null>(null)
 const resourceDropdownRef = ref<HTMLElement | null>(null)
+
+/** 购买/转化埋点（用于后台「购买点击」统计） */
+const trackBuy = () => trackEvent('buy')
 
 const memberLoggedIn = computed(() => {
   void memberCheckKey.value

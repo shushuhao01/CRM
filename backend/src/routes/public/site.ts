@@ -7,6 +7,8 @@ import { Router, Request, Response } from 'express';
 import { getDataSource } from '../../config/database';
 import { SiteArticle, SiteCase, SiteDoc, SiteNav } from '../../entities/SiteEntities';
 import { siteService } from '../../services/SiteService';
+import { recordVisit, touchOnline } from '../../services/SiteAnalyticsService';
+import { resolveChannel } from '../../services/ChannelService';
 import { SITE_CONFIG } from '../../config/sites';
 import { log } from '../../config/logger';
 
@@ -17,6 +19,12 @@ siteService.ensureTables().catch(() => {});
 
 /** 只返回已发布内容 */
 const PUBLISHED = 'published';
+
+/** 提取客户端 IP（优先反向代理头） */
+function clientIp(req: Request): string {
+  const xff = (req.headers['x-forwarded-for'] as string) || '';
+  return xff.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+}
 
 /** GET /api/v1/public/site/settings —— 获取站点SEO/基本信息设置 */
 router.get('/settings', async (_req: Request, res: Response) => {
@@ -282,33 +290,90 @@ router.get('/nav', async (req: Request, res: Response) => {
   }
 });
 
+// ==================== 渠道短链 ====================
+
+/** GET /api/v1/public/site/channel/resolve/:code —— 短链解析：命中启用渠道则记录点击并返回跳转目标 */
+router.get('/channel/resolve/:code', async (req: Request, res: Response) => {
+  try {
+    const result = await resolveChannel(
+      String(req.params.code || ''),
+      clientIp(req),
+      String(req.headers['user-agent'] || ''),
+      String(req.headers.referer || '')
+    );
+    if (!result) return res.status(404).json({ success: false, message: '渠道不存在或已停用' });
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    log.error('[Public官网] 渠道解析失败:', error);
+    res.status(500).json({ success: false, message: '渠道解析失败' });
+  }
+});
+
 // ==================== 访问上报 ====================
 
-/** POST /api/v1/public/site/track  body: { path, referer, device, browser, os, pageType, pageId } */
+/**
+ * POST /api/v1/public/site/track
+ * body: { type?: 'pv'|'hb'|'uv'|'download'|'buy', path?, referer?, visitorId?, channelCode? }
+ * - pv：写访问明细 + PV（当日首访累加 UV）+ 刷新在线
+ * - hb：仅刷新实时在线（不计 PV/UV）
+ * - download / buy：累加对应点击（带渠道码时同时累加渠道维度）
+ */
 router.post('/track', async (req: Request, res: Response) => {
   try {
     const b = req.body || {};
-    if (!b.path) return res.json({ success: true });
-
+    const type = String(b.type || '');
+    const channelCode = String(b.channelCode || '');
+    const ip = clientIp(req);
     const ua = (req.headers['user-agent'] as string) || '';
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-      || req.socket?.remoteAddress || '';
+    const visitorId = String(b.visitorId || '');
 
-    const visitorId = b.visitorId || '';
+    if (type === 'pv') {
+      try {
+        await recordVisit({
+          ip,
+          ua,
+          referer: String(req.headers.referer || b.referer || ''),
+          path: String(b.path || '/'),
+          visitorId,
+          host: String(req.headers.host || ''),
+          channelCode
+        });
+      } catch (e: any) {
+        log.warn('[Public官网] 记录访问失败:', e.message);
+      }
+      try {
+        await touchOnline(visitorId, ip);
+      } catch {
+        // 在线统计失败不影响前台
+      }
+      return res.json({ success: true });
+    }
 
-    await siteService.trackVisit({
-      path: String(b.path),
-      visitorId: visitorId || undefined,
-      ip,
-      userAgent: ua,
-      referer: b.referer,
-      device: b.device,
-      browser: b.browser,
-      os: b.os,
-      pageType: b.pageType,
-      pageId: b.pageId
-    });
+    if (type === 'hb') {
+      try {
+        await touchOnline(visitorId, ip);
+      } catch {
+        // 在线统计失败不影响前台
+      }
+      return res.json({ success: true });
+    }
 
+    const map: Record<string, 'uv' | 'downloads' | 'buyClicks'> = {
+      uv: 'uv',
+      download: 'downloads',
+      buy: 'buyClicks'
+    };
+    const field = map[type];
+    if (field) {
+      try {
+        await siteService.bumpStat(field, 1);
+        if (channelCode && (type === 'download' || type === 'buy')) {
+          await siteService.bumpChannelStat(channelCode, type === 'download' ? 'downloads' : 'buyClicks', 1);
+        }
+      } catch {
+        // 统计失败不影响前台
+      }
+    }
     res.json({ success: true });
   } catch (error: any) {
     // 埋点失败不影响前端

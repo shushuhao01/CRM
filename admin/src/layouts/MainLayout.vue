@@ -160,10 +160,14 @@
         </el-sub-menu>
 
         <!-- 官网管理 -->
-        <el-menu-item v-if="hasMenu('website')" index="/website">
-          <el-icon><Monitor /></el-icon>
-          <template #title>官网管理</template>
-        </el-menu-item>
+        <el-sub-menu v-if="hasMenu('website')" index="/website">
+          <template #title>
+            <el-icon><Monitor /></el-icon>
+            <span>官网管理</span>
+          </template>
+          <el-menu-item v-if="hasAnyPerm(['website:settings:view', 'website:articles:view', 'website:notices:view', 'website:cases:view', 'website:docs:view', 'website:nav:view'])" index="/website/basic">基础管理</el-menu-item>
+          <el-menu-item v-if="hasPerm('website:stats:view')" index="/website/stats">访问统计</el-menu-item>
+        </el-sub-menu>
 
         <!-- 系统设置 -->
         <el-sub-menu v-if="hasMenu('settings')" index="/settings">
@@ -293,6 +297,14 @@ const hasMenu = (moduleCode: string): boolean => {
  */
 const hasPerm = (permission: string): boolean => {
   return userStore.hasPermission(permission)
+}
+
+/**
+ * 检查是否拥有指定权限码中的任意一个
+ * 用于二级菜单需要多个权限任一即可显示的场景
+ */
+const hasAnyPerm = (perms: string[]): boolean => {
+  return userStore.hasAnyPermission(perms)
 }
 
 const isCollapse = ref(false)

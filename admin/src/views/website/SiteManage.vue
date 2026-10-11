@@ -19,9 +19,6 @@
       <el-tab-pane v-if="hasPerm('website:nav:view')" label="导航菜单" name="nav" lazy>
         <NavTab />
       </el-tab-pane>
-      <el-tab-pane v-if="hasPerm('website:stats:view')" label="访问统计" name="stats" lazy>
-        <StatsTab />
-      </el-tab-pane>
     </el-tabs>
 
     <el-empty v-if="!hasAnyPerm" description="暂无官网管理权限，请联系管理员分配" />
@@ -36,21 +33,19 @@ import ArticleTab from './components/ArticleTab.vue'
 import CaseTab from './components/CaseTab.vue'
 import DocTab from './components/DocTab.vue'
 import NavTab from './components/NavTab.vue'
-import StatsTab from './components/StatsTab.vue'
 
 const userStore = useUserStore()
 
 const hasPerm = (code: string) => userStore.hasPermission(code)
 
-const tabNames = ['settings', 'articles', 'notices', 'cases', 'docs', 'nav', 'stats']
+const tabNames = ['settings', 'articles', 'notices', 'cases', 'docs', 'nav']
 const permMap: Record<string, string> = {
   settings: 'website:settings:view',
   articles: 'website:articles:view',
   notices: 'website:notices:view',
   cases: 'website:cases:view',
   docs: 'website:docs:view',
-  nav: 'website:nav:view',
-  stats: 'website:stats:view'
+  nav: 'website:nav:view'
 }
 
 const firstPermitted = tabNames.find(name => hasPerm(permMap[name])) || ''

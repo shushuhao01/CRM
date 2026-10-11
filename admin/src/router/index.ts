@@ -386,9 +386,23 @@ const router = createRouter({
         // 官网管理
         {
           path: 'website',
-          name: 'WebsiteManage',
-          component: () => import('@/views/website/SiteManage.vue'),
-          meta: { title: '官网管理', icon: 'Monitor' }
+          name: 'WebsiteParent',
+          meta: { title: '官网管理', icon: 'Monitor' },
+          redirect: '/website/basic',
+          children: [
+            {
+              path: 'basic',
+              name: 'WebsiteBasic',
+              component: () => import('@/views/website/SiteManage.vue'),
+              meta: { title: '基础管理' }
+            },
+            {
+              path: 'stats',
+              name: 'WebsiteStats',
+              component: () => import('@/views/website/SiteStats.vue'),
+              meta: { title: '访问统计', permission: 'website:stats:view' }
+            }
+          ]
         },
         // 系统设置
         {

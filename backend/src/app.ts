@@ -364,6 +364,25 @@ app.get('/sitemap.xml', async (_req, res) => {
   }
 });
 
+// ==================== SEO: IndexNow 密钥校验文件 ====================
+// GET /<indexnow-key>.txt —— Bing/Yandex 等据此验证站点归属（由 nginx 反代到后端）
+// 仅匹配十六进制命名的 .txt，避免误伤 robots.txt 等静态文件
+app.get(/^\/([0-9a-fA-F]{8,128})\.txt$/, async (req, res) => {
+  try {
+    const key = String((req.params as any)[0] || '');
+    const settings = await siteService.getSettings();
+    const indexNowKey = (settings.indexNowKey || '').trim();
+    if (indexNowKey && key === indexNowKey) {
+      res.set('Content-Type', 'text/plain; charset=utf-8');
+      res.set('Cache-Control', 'public, max-age=3600');
+      return res.send(indexNowKey);
+    }
+  } catch (err: any) {
+    log.warn('[IndexNow] 返回 key 失败:', err.message);
+  }
+  res.status(404).type('text/plain').send('Not Found');
+});
+
 // 404 处理
 app.use(notFoundHandler);
 

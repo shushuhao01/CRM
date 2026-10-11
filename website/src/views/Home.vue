@@ -526,6 +526,30 @@
       </div>
     </section>
 
+    <!-- 最新公告 -->
+    <section v-if="siteNotices.length > 0" class="notices-section">
+      <div class="container">
+        <div class="section-title">
+          <h2>最新<span>公告</span></h2>
+          <p>产品发布、服务通知与站点公告</p>
+        </div>
+
+        <ul class="notices-list">
+          <li v-for="item in siteNotices" :key="item.id" class="notice-row">
+            <router-link :to="`/notice/${item.slug || item.id}`" class="notice-link">
+              <span v-if="item.isTop" class="notice-top">置顶</span>
+              <span class="notice-title">{{ item.title }}</span>
+              <time v-if="item.publishedAt" class="notice-date" :datetime="item.publishedAt">{{ formatHomeDate(item.publishedAt) }}</time>
+            </router-link>
+          </li>
+        </ul>
+
+        <div class="section-more">
+          <router-link to="/notice" class="btn btn-outline">查看全部公告 →</router-link>
+        </div>
+      </div>
+    </section>
+
     <!-- 版本对比 -->
     <section class="versions-section">
       <div class="container">
@@ -697,7 +721,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import ImagePreview from '@/components/ImagePreview.vue'
 import { getPackages, type Package } from '@/api/packages'
 import { getWebsiteConfig, type WebsiteConfig } from '@/api/website-config'
-import { getCases, getArticles, type SiteCaseItem, type SiteArticleItem } from '@/api/site'
+import { getCases, getArticles, getNotices, type SiteCaseItem, type SiteArticleItem, type SiteNoticeItem } from '@/api/site'
 
 const previewVisible = ref(false)
 const previewImage = ref('')
@@ -756,6 +780,7 @@ const packagesData = ref<Package[]>([])
 // 官网案例与文章
 const siteCases = ref<SiteCaseItem[]>([])
 const siteArticles = ref<SiteArticleItem[]>([])
+const siteNotices = ref<SiteNoticeItem[]>([])
 
 // 首页日期格式化
 const formatHomeDate = (v: string) => {
@@ -832,6 +857,10 @@ onMounted(() => {
   })
   getArticles({ page: 1, pageSize: 3 }).then(data => {
     siteArticles.value = data?.list || []
+  })
+  // 加载最新公告（失败静默，板块自动隐藏）
+  getNotices({ page: 1, pageSize: 5 }).then(data => {
+    siteNotices.value = data?.list || []
   })
 })
 
@@ -2195,6 +2224,73 @@ onUnmounted(() => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.notices-section {
+  padding: var(--section-padding);
+  background: var(--bg-light);
+}
+
+.notices-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.notice-row {
+  border-bottom: 1px solid var(--border);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.notice-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 24px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: var(--bg-light);
+
+    .notice-title {
+      color: var(--primary);
+    }
+  }
+}
+
+.notice-top {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.notice-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+.notice-date {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
 .section-more {

@@ -9,10 +9,17 @@
  * 5. sitemap.xml 动态生成
  */
 import { AppDataSource } from '../config/database';
-import { SiteSetting, SiteVisitLog } from '../entities/SiteEntities';
+import { SiteSetting, SiteVisitLog, SiteStatsDaily, SiteChannelStatsDaily } from '../entities/SiteEntities';
 import { SITE_CONFIG } from '../config/sites';
 import { log } from '../config/logger';
 import { v4 as uuidv4 } from 'uuid';
+
+/** 站点设置默认值（getSettings 返回时合并，保证 IndexNow/SEO 推送开箱可用） */
+const SITE_DEFAULTS: Record<string, string> = {
+  indexNowKey: '6f3b4323a59949a79a5eca7d576dc4e0',
+  baiduPushToken: '',
+  seoPushEnabled: '1'
+};
 
 class SiteService {
   /** 已就绪的迁移 Promise（进程内仅执行一次，失败不缓存以便重试） */
@@ -163,17 +170,22 @@ class SiteService {
     await ds.query(`
       CREATE TABLE IF NOT EXISTS \`site_visit_log\` (
         \`id\` VARCHAR(36) NOT NULL COMMENT '主键',
+        \`visit_date\` DATE NULL COMMENT '访问日期(YYYY-MM-DD)',
+        \`visit_hour\` TINYINT NOT NULL DEFAULT 0 COMMENT '访问小时(0-23)',
         \`path\` VARCHAR(500) NOT NULL COMMENT '访问路径',
         \`visitor_id\` VARCHAR(64) NULL COMMENT '访问者标识(cookie)',
+        \`channel_code\` VARCHAR(32) NOT NULL DEFAULT '' COMMENT '渠道编码',
         \`ip\` VARCHAR(64) NULL COMMENT 'IP地址',
         \`user_agent\` VARCHAR(500) NULL COMMENT 'User-Agent',
         \`referer\` VARCHAR(500) NULL COMMENT '来源页',
-        \`device\` VARCHAR(20) NULL COMMENT '设备类型: pc/mobile',
+        \`source\` VARCHAR(32) NULL COMMENT '来源分类',
+        \`device\` VARCHAR(20) NULL COMMENT '设备类型',
         \`browser\` VARCHAR(50) NULL COMMENT '浏览器',
         \`os\` VARCHAR(50) NULL COMMENT '操作系统',
         \`country\` VARCHAR(100) NULL COMMENT '国家',
         \`province\` VARCHAR(100) NULL COMMENT '省份',
         \`city\` VARCHAR(100) NULL COMMENT '城市',
+        \`isp\` VARCHAR(64) NULL COMMENT '运营商(ISP)',
         \`page_type\` VARCHAR(50) NULL COMMENT '页面类型',
         \`page_id\` VARCHAR(36) NULL COMMENT '关联内容ID',
         \`duration\` INT NOT NULL DEFAULT 0 COMMENT '停留时长(秒)',
@@ -181,6 +193,8 @@ class SiteService {
         PRIMARY KEY (\`id\`),
         KEY \`IDX_site_visit_log_path\` (\`path\`(191)),
         KEY \`IDX_site_visit_log_visitor\` (\`visitor_id\`),
+        KEY \`IDX_site_visit_log_date\` (\`visit_date\`),
+        KEY \`IDX_site_visit_log_channel\` (\`channel_code\`),
         KEY \`IDX_site_visit_log_created\` (\`created_at\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官网访问日志'
     `);
@@ -202,6 +216,80 @@ class SiteService {
         PRIMARY KEY (\`id\`),
         UNIQUE KEY \`IDX_site_stats_daily_date\` (\`stat_date\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官网访问日统计'
+    `);
+
+    // 8. 官网在线访客（实时在线统计）
+    await ds.query(`
+      CREATE TABLE IF NOT EXISTS \`site_online\` (
+        \`visitor_id\` VARCHAR(64) NOT NULL COMMENT '访客标识',
+        \`ip\` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'IP地址',
+        \`last_seen\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近活跃时间',
+        PRIMARY KEY (\`visitor_id\`),
+        KEY \`IDX_site_online_lastseen\` (\`last_seen\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官网在线访客'
+    `);
+
+    // 9. 官网渠道链接（推广短链）
+    await ds.query(`
+      CREATE TABLE IF NOT EXISTS \`site_channel_link\` (
+        \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+        \`code\` VARCHAR(32) NOT NULL COMMENT '渠道编码',
+        \`name\` VARCHAR(128) NOT NULL COMMENT '渠道名称',
+        \`channel\` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '渠道标识',
+        \`target_path\` VARCHAR(255) NOT NULL DEFAULT '/' COMMENT '落地页路径',
+        \`remark\` VARCHAR(512) NULL COMMENT '备注',
+        \`enabled\` TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用: 1=启用, 0=停用',
+        \`click_count\` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '点击次数',
+        \`unique_click_count\` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '去重点击数',
+        \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+        \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`IDX_site_channel_link_code\` (\`code\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官网渠道链接'
+    `);
+
+    // 10. 官网渠道点击明细
+    await ds.query(`
+      CREATE TABLE IF NOT EXISTS \`site_channel_click\` (
+        \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+        \`channel_code\` VARCHAR(32) NOT NULL DEFAULT '' COMMENT '渠道编码',
+        \`ip\` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'IP地址',
+        \`user_agent\` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'User-Agent',
+        \`referer\` VARCHAR(512) NOT NULL DEFAULT '' COMMENT '来源页',
+        \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '点击时间',
+        PRIMARY KEY (\`id\`),
+        KEY \`IDX_site_channel_click_code\` (\`channel_code\`),
+        KEY \`IDX_site_channel_click_created\` (\`created_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官网渠道点击明细'
+    `);
+
+    // 11. 官网渠道日聚合统计
+    await ds.query(`
+      CREATE TABLE IF NOT EXISTS \`site_channel_stats_daily\` (
+        \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+        \`stat_date\` DATE NOT NULL COMMENT '统计日期',
+        \`channel_code\` VARCHAR(32) NOT NULL DEFAULT '' COMMENT '渠道编码',
+        \`downloads\` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '下载点击',
+        \`buy_clicks\` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '购买点击',
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`uk_scsd_date_channel\` (\`stat_date\`, \`channel_code\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官网渠道日聚合统计'
+    `);
+
+    // 12. 官网媒体库（富文本素材库）
+    await ds.query(`
+      CREATE TABLE IF NOT EXISTS \`site_media\` (
+        \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+        \`filename\` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '原始文件名',
+        \`path\` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '访问路径(URL)',
+        \`size\` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '文件大小(字节)',
+        \`mime\` VARCHAR(64) NULL COMMENT 'MIME类型',
+        \`width\` INT UNSIGNED NULL COMMENT '宽(像素)',
+        \`height\` INT UNSIGNED NULL COMMENT '高(像素)',
+        \`uploaded_by\` BIGINT UNSIGNED NULL COMMENT '上传者ID',
+        \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+        PRIMARY KEY (\`id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官网媒体库'
     `);
 
     // 对照实体逐列补齐缺失字段（旧表升级兼容）
@@ -289,7 +377,12 @@ class SiteService {
       { name: 'city', sql: "ADD COLUMN `city` VARCHAR(100) NULL COMMENT '城市' AFTER `province`" },
       { name: 'page_type', sql: "ADD COLUMN `page_type` VARCHAR(50) NULL COMMENT '页面类型' AFTER `city`" },
       { name: 'page_id', sql: "ADD COLUMN `page_id` VARCHAR(36) NULL COMMENT '关联内容ID' AFTER `page_type`" },
-      { name: 'duration', sql: "ADD COLUMN `duration` INT NOT NULL DEFAULT 0 COMMENT '停留时长(秒)' AFTER `page_id`" }
+      { name: 'duration', sql: "ADD COLUMN `duration` INT NOT NULL DEFAULT 0 COMMENT '停留时长(秒)' AFTER `page_id`" },
+      { name: 'isp', sql: "ADD COLUMN `isp` VARCHAR(64) NULL COMMENT '运营商(ISP)' AFTER `city`" },
+      { name: 'source', sql: "ADD COLUMN `source` VARCHAR(32) NULL COMMENT '来源分类' AFTER `referer`" },
+      { name: 'channel_code', sql: "ADD COLUMN `channel_code` VARCHAR(32) NOT NULL DEFAULT '' COMMENT '渠道编码' AFTER `visitor_id`" },
+      { name: 'visit_date', sql: "ADD COLUMN `visit_date` DATE NULL COMMENT '访问日期(YYYY-MM-DD)' AFTER `path`" },
+      { name: 'visit_hour', sql: "ADD COLUMN `visit_hour` TINYINT NOT NULL DEFAULT 0 COMMENT '访问小时(0-23)' AFTER `visit_date`" }
     ]);
 
     await this.ensureColumns('site_stats_daily', [
@@ -297,7 +390,9 @@ class SiteService {
       { name: 'new_visitors', sql: "ADD COLUMN `new_visitors` INT NOT NULL DEFAULT 0 COMMENT '新访客数' AFTER `ip_count`" },
       { name: 'avg_duration', sql: "ADD COLUMN `avg_duration` INT NOT NULL DEFAULT 0 COMMENT '平均停留时长(秒)' AFTER `new_visitors`" },
       { name: 'top_pages', sql: "ADD COLUMN `top_pages` JSON NULL COMMENT '热门页面(JSON)' AFTER `avg_duration`" },
-      { name: 'top_referers', sql: "ADD COLUMN `top_referers` JSON NULL COMMENT '来源分布(JSON)' AFTER `top_pages`" }
+      { name: 'top_referers', sql: "ADD COLUMN `top_referers` JSON NULL COMMENT '来源分布(JSON)' AFTER `top_pages`" },
+      { name: 'downloads', sql: "ADD COLUMN `downloads` INT NOT NULL DEFAULT 0 COMMENT '下载点击' AFTER `top_referers`" },
+      { name: 'buy_clicks', sql: "ADD COLUMN `buy_clicks` INT NOT NULL DEFAULT 0 COMMENT '购买点击' AFTER `downloads`" }
     ]);
 
     log.info('[Site] 表结构自检完成（自动建表+补列）');
@@ -337,7 +432,7 @@ class SiteService {
     for (const item of list) {
       map[item.settingKey] = item.settingValue ?? '';
     }
-    return map;
+    return { ...SITE_DEFAULTS, ...map };
   }
 
   /** 批量保存站点设置（键值对象，存在则更新，不存在则新建） */
@@ -361,6 +456,36 @@ class SiteService {
   }
 
   // ==================== 访问统计 ====================
+
+  /** 按今日累计站点日统计（PV/UV/下载点击/购买点击） */
+  async bumpStat(field: 'pv' | 'uv' | 'downloads' | 'buyClicks', delta = 1): Promise<void> {
+    await this.ensureTables();
+    const repo = AppDataSource.getRepository(SiteStatsDaily);
+    const now = new Date();
+    const statDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    let row = await repo.findOne({ where: { statDate } });
+    if (!row) {
+      row = repo.create({ id: uuidv4(), statDate, pv: 0, uv: 0, ipCount: 0, newVisitors: 0, avgDuration: 0, downloads: 0, buyClicks: 0 });
+    }
+    row[field] = (Number(row[field]) || 0) + delta;
+    await repo.save(row);
+  }
+
+  /** 按今日累计渠道日统计（下载点击/购买点击） */
+  async bumpChannelStat(channelCode: string, field: 'downloads' | 'buyClicks', delta = 1): Promise<void> {
+    await this.ensureTables();
+    const code = (channelCode || '').trim().toLowerCase().slice(0, 32);
+    if (!code) return;
+    const repo = AppDataSource.getRepository(SiteChannelStatsDaily);
+    const now = new Date();
+    const statDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    let row = await repo.findOne({ where: { statDate, channelCode: code } });
+    if (!row) {
+      row = repo.create({ statDate, channelCode: code, downloads: 0, buyClicks: 0 });
+    }
+    row[field] = (Number(row[field]) || 0) + delta;
+    await repo.save(row);
+  }
 
   /** 概览统计：累计 PV/UV、今日 PV/UV、近 N 日趋势 */
   async getStatsOverview(): Promise<any> {

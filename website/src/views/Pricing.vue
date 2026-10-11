@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="pricing-page">
     <!-- Hero -->
     <section class="pricing-hero">
@@ -112,6 +112,7 @@
               :to="`/register?plan=${pkg.code}`"
               class="btn"
               :class="pkg.is_recommended ? 'btn-primary' : 'btn-outline'"
+              @click="trackBuy"
             >
               {{ pkg.is_trial ? '开始试用' : `选择${pkg.name}` }}
             </router-link>
@@ -218,6 +219,7 @@
               :to="`/register?plan=${pkg.code}&billing=${isPrivatePerpetual ? 'perpetual' : 'annual'}`"
               class="btn"
               :class="pkg.is_recommended ? 'btn-primary' : 'btn-outline'"
+              @click="trackBuy"
             >
               {{ pkg.code === 'PRIVATE_ENTERPRISE' ? '联系销售' : `选择${pkg.name}` }}
             </router-link>
@@ -461,6 +463,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { getPackages, getYearlyPrice, getYearlyTotal, getYearlySaving, getYearlyPromoText, type Package } from '@/api/packages'
+import { trackEvent } from '@/api/site'
+
+/** 购买/转化埋点（用于后台「购买点击」统计） */
+const trackBuy = () => trackEvent('buy')
 
 const currentVersion = ref<'saas' | 'private' | 'community'>('saas')
 const isYearly = ref(false)

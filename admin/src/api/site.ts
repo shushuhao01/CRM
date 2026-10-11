@@ -97,6 +97,114 @@ export interface SiteNav {
   updatedAt: string
 }
 
+/** 通用名称-数值对（用于饼图/柱状图维度） */
+export interface NameValue {
+  name: string
+  value: number
+}
+
+/** 官网访问明细 */
+export interface SiteVisitLog {
+  id: string
+  visitDate: string
+  visitHour: number
+  ip: string
+  country: string
+  province: string
+  city: string
+  isp: string
+  device: string
+  os: string
+  browser: string
+  source: string
+  referer: string
+  path: string
+  visitorId: string
+  channelCode: string
+  userAgent: string
+  createdAt: string
+}
+
+/** 官网多维流量分析结果 */
+export interface SiteAnalytics {
+  range: { days: number; start: string; end: string }
+  summary: {
+    pv: number
+    uv: number
+    ips: number
+    downloads: number
+    buyClicks: number
+    todayPv: number
+    todayUv: number
+    avgPv: number
+    peakHour: number
+    peakHourPv: number
+  }
+  trend: { dates: string[]; pv: number[]; uv: number[] }
+  hours: { labels: string[]; pv: number[] }
+  sources: NameValue[]
+  devices: NameValue[]
+  os: NameValue[]
+  browsers: NameValue[]
+  regions: NameValue[]
+  isps: NameValue[]
+  pages: { path: string; pv: number; uv: number }[]
+  ips: { ip: string; province: string; city: string; isp: string; pv: number; lastPath: string; lastTime: string }[]
+  daily: { date: string; pv: number; uv: number; downloads: number; buyClicks: number }[]
+}
+
+/** 渠道链接（含完整推广短链地址） */
+export interface ChannelLink {
+  id: string
+  code: string
+  name: string
+  channel: string
+  targetPath: string
+  remark: string | null
+  enabled: number
+  clickCount: number
+  uniqueClickCount: number
+  createdAt: string
+  updatedAt: string
+  shortUrl: string
+}
+
+/** 渠道新建 / 更新入参 */
+export interface ChannelPayload {
+  name: string
+  code?: string
+  channel?: string
+  targetPath?: string
+  remark?: string | null
+  enabled?: number
+}
+
+/** 渠道访问明细查询参数 */
+export type ChannelVisitQuery = {
+  page?: number
+  pageSize?: number
+  ip?: string
+  path?: string
+  device?: string
+  source?: string
+  keyword?: string
+  start?: string
+  end?: string
+}
+
+/** 官网媒体库文件（富文本素材库） */
+export interface SiteMedia {
+  id: string
+  filename: string
+  path: string
+  size: number
+  mime?: string
+  width?: number
+  height?: number
+  uploadedBy?: string
+  createdAt: string
+}
+
 export const siteApi = {
   // ==================== 站点设置 ====================
   getSettings: () => request.get<Record<string, string>>('/site/settings'),
@@ -139,9 +247,50 @@ export const siteApi = {
   getAnalytics: () => request.get<any>('/site/stats/analytics'),
   clearStats: (days = 90) => request.delete('/site/stats/clear', { params: { days } }),
 
+  // ==================== 流量分析 / 访问明细 ====================
+  /** 多维流量分析（趋势/来源/设备/系统/浏览器/地域/运营商/页面/IP） */
+  getTrafficAnalytics: (days = 30, start?: string, end?: string) =>
+    request.get<SiteAnalytics>('/site/analytics', { params: { days, start, end } }),
+  /** 实时在线访客数（最近 N 分钟内有访问行为） */
+  getOnline: (minutes = 5) => request.get<{ online: number; minutes: number }>('/site/online', { params: { minutes } }),
+  /** 访问明细分页查询 */
+  getVisitLogs: (params?: {
+    page?: number
+    pageSize?: number
+    ip?: string
+    path?: string
+    device?: string
+    source?: string
+    keyword?: string
+    start?: string
+    end?: string
+  }) => request.get<PagedResult<SiteVisitLog>>('/site/visits', { params }),
+
+  // ==================== 渠道链接（推广短链） ====================
+  getChannels: (params?: { page?: number; pageSize?: number; keyword?: string }) =>
+    request.get<PagedResult<ChannelLink>>('/site/channels', { params }),
+  createChannel: (data: ChannelPayload) => request.post<ChannelLink>('/site/channels', data),
+  updateChannel: (id: string, data: Partial<ChannelPayload>) => request.put<ChannelLink>(`/site/channels/${id}`, data),
+  removeChannel: (id: string) => request.delete(`/site/channels/${id}`),
+  getChannelAnalytics: (code: string, days = 30, start?: string, end?: string) =>
+    request.get<SiteAnalytics>(`/site/channels/${encodeURIComponent(code)}/analytics`, { params: { days, start, end } }),
+  getChannelVisits: (code: string, params?: ChannelVisitQuery) =>
+    request.get<PagedResult<SiteVisitLog>>(`/site/channels/${encodeURIComponent(code)}/visits`, { params }),
+  getChannelQrcode: (code: string) =>
+    request.get<{ code: string; url: string; dataUrl: string }>(`/site/channels/${encodeURIComponent(code)}/qrcode`),
+
   // ==================== SEO 主动推送 ====================
   seoPush: (data?: { urls?: string[]; engine?: 'baidu' | 'indexnow' | 'all' }) =>
-    request.post<any>('/site/seo-push', data || {})
+    request.post<any>('/site/seo-push', data || {}),
+
+  // ==================== 媒体库（富文本素材库） ====================
+  getMediaList: (params?: { page?: number; pageSize?: number; keyword?: string }) =>
+    request.get<PagedResult<SiteMedia>>('/site/media', { params }),
+  uploadSiteImage: (formData: FormData) =>
+    request.post<SiteMedia>('/site/media/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+  deleteMedia: (id: string) => request.delete(`/site/media/${id}`)
 }
 
 export default siteApi

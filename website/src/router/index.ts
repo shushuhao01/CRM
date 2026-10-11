@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { trackPageVisit } from '@/api/site'
+import { trackPageview } from '@/api/site'
 
 const routes = [
   {
@@ -94,18 +94,25 @@ const routes = [
     component: () => import('@/views/CaseDetail.vue'),
     meta: { title: '案例详情 - 云客CRM' }
   },
-  // 更新日志（站点公告）
+  // 公告
   {
     path: '/notice',
     name: 'NoticeList',
     component: () => import('@/views/NoticeList.vue'),
-    meta: { title: '更新日志 - 云客CRM', description: '云客CRM产品更新与站点公告' }
+    meta: { title: '公告 - 云客CRM', description: '云客CRM产品发布、服务通知与站点公告' }
   },
   {
     path: '/notice/:slug',
     name: 'NoticeDetail',
     component: () => import('@/views/NoticeDetail.vue'),
     meta: { title: '公告详情 - 云客CRM' }
+  },
+  // 渠道推广短链跳转页
+  {
+    path: '/c/:code',
+    name: 'ChannelRedirect',
+    component: () => import('@/views/ChannelRedirect.vue'),
+    meta: { title: '跳转中 - 云客CRM' }
   },
   // 会员中心 - 登录页（无需认证）
   {
@@ -181,18 +188,7 @@ router.afterEach((to) => {
 
   // 访问统计上报（静默，排除会员中心）
   if (!to.path.startsWith('/member')) {
-    const ua = navigator.userAgent
-    const device = /Mobi|Android|iPhone|iPad|iPod/i.test(ua) ? 'mobile' : 'pc'
-    let pageType = 'page'
-    if (to.path === '/') pageType = 'home'
-    else if (to.name === 'BlogDetail' || to.name === 'CaseDetail' || to.name === 'NoticeDetail' || to.name === 'DocDetail') pageType = String(to.name).replace('Detail', '').toLowerCase()
-    trackPageVisit({
-      path: to.fullPath,
-      referer: document.referrer || '',
-      device,
-      pageType,
-      pageId: (to.params.slug as string) || (to.params.doc as string) || undefined
-    })
+    trackPageview(to.fullPath)
   }
 })
 

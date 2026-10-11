@@ -2,8 +2,8 @@
   <div class="notice-page">
     <section class="page-hero">
       <div class="container">
-        <h1>更新<span class="gradient-text">日志</span></h1>
-        <p>云客CRM 产品更新与站点公告</p>
+        <h1>最新<span class="gradient-text">公告</span></h1>
+        <p>产品发布、服务通知与站点公告</p>
       </div>
     </section>
 

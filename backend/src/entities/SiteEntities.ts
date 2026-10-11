@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { Entity, PrimaryColumn, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 /**
  * 官网内容实体集合
@@ -301,6 +301,13 @@ export class SiteVisitLog {
   @PrimaryColumn({ type: 'varchar', length: 36 })
   id!: string;
 
+  @Column({ name: 'visit_date', type: 'date', nullable: true, comment: '访问日期(YYYY-MM-DD)' })
+  @Index()
+  visitDate?: string;
+
+  @Column({ name: 'visit_hour', type: 'tinyint', default: 0, comment: '访问小时(0-23)' })
+  visitHour!: number;
+
   @Column({ type: 'varchar', length: 500, comment: '访问路径' })
   @Index()
   path!: string;
@@ -308,6 +315,10 @@ export class SiteVisitLog {
   @Column({ type: 'varchar', length: 64, nullable: true, comment: '访问者标识(cookie)' })
   @Index()
   visitorId?: string;
+
+  @Column({ name: 'channel_code', type: 'varchar', length: 32, default: '', comment: '渠道编码' })
+  @Index()
+  channelCode!: string;
 
   @Column({ type: 'varchar', length: 64, nullable: true, comment: 'IP地址' })
   ip?: string;
@@ -318,7 +329,10 @@ export class SiteVisitLog {
   @Column({ type: 'varchar', length: 500, nullable: true, comment: '来源页' })
   referer?: string;
 
-  @Column({ type: 'varchar', length: 20, nullable: true, comment: '设备类型: pc/mobile' })
+  @Column({ type: 'varchar', length: 32, nullable: true, comment: '来源分类' })
+  source?: string;
+
+  @Column({ type: 'varchar', length: 20, nullable: true, comment: '设备类型: desktop/mobile/tablet/bot' })
   device?: string;
 
   @Column({ type: 'varchar', length: 50, nullable: true, comment: '浏览器' })
@@ -335,6 +349,9 @@ export class SiteVisitLog {
 
   @Column({ type: 'varchar', length: 100, nullable: true, comment: '城市' })
   city?: string;
+
+  @Column({ type: 'varchar', length: 64, nullable: true, comment: '运营商(ISP)' })
+  isp?: string;
 
   @Column({ name: 'page_type', type: 'varchar', length: 50, nullable: true, comment: '页面类型' })
   pageType?: string;
@@ -383,9 +400,153 @@ export class SiteStatsDaily {
   @Column({ name: 'top_referers', type: 'json', nullable: true, comment: '来源分布(JSON)' })
   topReferers?: any;
 
+  @Column({ type: 'int', default: 0, comment: '下载点击' })
+  downloads!: number;
+
+  @Column({ name: 'buy_clicks', type: 'int', default: 0, comment: '购买点击' })
+  buyClicks!: number;
+
   @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
   createdAt!: Date;
 
   @UpdateDateColumn({ name: 'updated_at', comment: '更新时间' })
   updatedAt!: Date;
+}
+
+/**
+ * 官网在线访客实体（实时在线统计：按访客标识记录最近一次活跃时间）
+ */
+@Entity('site_online')
+export class SiteOnline {
+  @PrimaryColumn({ type: 'varchar', length: 64, name: 'visitor_id' })
+  visitorId!: string;
+
+  @Column({ type: 'varchar', length: 64, default: '', comment: 'IP地址' })
+  ip!: string;
+
+  @Index()
+  @Column({ name: 'last_seen', type: 'datetime', default: () => 'CURRENT_TIMESTAMP', comment: '最近活跃时间' })
+  lastSeen!: Date;
+}
+
+/**
+ * 官网渠道链接实体（推广短链，/c/{code} 与 ?ch={code}）
+ */
+@Entity('site_channel_link')
+export class SiteChannelLink {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id!: string;
+
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 32, comment: '渠道编码' })
+  code!: string;
+
+  @Column({ type: 'varchar', length: 128, comment: '渠道名称' })
+  name!: string;
+
+  @Column({ type: 'varchar', length: 64, default: '', comment: '渠道标识' })
+  channel!: string;
+
+  @Column({ name: 'target_path', type: 'varchar', length: 255, default: '/', comment: '落地页路径' })
+  targetPath!: string;
+
+  @Column({ type: 'varchar', length: 512, nullable: true, comment: '备注' })
+  remark!: string | null;
+
+  @Column({ type: 'tinyint', default: 1, comment: '是否启用: 1=启用, 0=停用' })
+  enabled!: number;
+
+  @Column({ name: 'click_count', type: 'int', unsigned: true, default: 0, comment: '点击次数' })
+  clickCount!: number;
+
+  @Column({ name: 'unique_click_count', type: 'int', unsigned: true, default: 0, comment: '去重点击数' })
+  uniqueClickCount!: number;
+
+  @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', comment: '更新时间' })
+  updatedAt!: Date;
+}
+
+/**
+ * 官网渠道点击明细实体（短链 / 带参访问时逐条记录）
+ */
+@Entity('site_channel_click')
+export class SiteChannelClick {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id!: string;
+
+  @Index()
+  @Column({ name: 'channel_code', type: 'varchar', length: 32, default: '', comment: '渠道编码' })
+  channelCode!: string;
+
+  @Column({ type: 'varchar', length: 64, default: '', comment: 'IP地址' })
+  ip!: string;
+
+  @Column({ name: 'user_agent', type: 'varchar', length: 255, default: '', comment: 'User-Agent' })
+  userAgent!: string;
+
+  @Column({ type: 'varchar', length: 512, default: '', comment: '来源页' })
+  referer!: string;
+
+  @Index()
+  @CreateDateColumn({ name: 'created_at', comment: '点击时间' })
+  createdAt!: Date;
+}
+
+/**
+ * 官网渠道日聚合统计实体（按 渠道 + 日期 记录下载 / 购买点击）
+ */
+@Entity('site_channel_stats_daily')
+@Index('uk_scsd_date_channel', ['statDate', 'channelCode'], { unique: true })
+export class SiteChannelStatsDaily {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id!: string;
+
+  @Column({ name: 'stat_date', type: 'date', comment: '统计日期' })
+  statDate!: string;
+
+  @Column({ name: 'channel_code', type: 'varchar', length: 32, default: '', comment: '渠道编码' })
+  channelCode!: string;
+
+  @Column({ type: 'int', unsigned: true, default: 0, comment: '下载点击' })
+  downloads!: number;
+
+  @Column({ name: 'buy_clicks', type: 'int', unsigned: true, default: 0, comment: '购买点击' })
+  buyClicks!: number;
+}
+
+/**
+ * 官网媒体库实体
+ * 供富文本编辑器「素材库」使用：记录上传的图片等静态资源
+ */
+@Entity('site_media')
+export class SiteMedia {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id!: string;
+
+  @Column({ type: 'varchar', length: 255, comment: '原始文件名' })
+  filename!: string;
+
+  @Column({ type: 'varchar', length: 500, comment: '访问路径(URL)' })
+  path!: string;
+
+  @Column({ type: 'int', unsigned: true, default: 0, comment: '文件大小(字节)' })
+  size!: number;
+
+  @Column({ type: 'varchar', length: 64, nullable: true, comment: 'MIME类型' })
+  mime?: string;
+
+  @Column({ type: 'int', unsigned: true, nullable: true, comment: '宽(像素)' })
+  width?: number;
+
+  @Column({ type: 'int', unsigned: true, nullable: true, comment: '高(像素)' })
+  height?: number;
+
+  @Column({ name: 'uploaded_by', type: 'bigint', unsigned: true, nullable: true, comment: '上传者ID' })
+  uploadedBy?: string;
+
+  @CreateDateColumn({ name: 'created_at', comment: '创建时间' })
+  createdAt!: Date;
 }

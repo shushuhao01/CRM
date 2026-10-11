@@ -4,7 +4,7 @@
       <nav v-if="item" class="breadcrumb">
         <router-link to="/">首页</router-link>
         <span>/</span>
-        <router-link to="/notice">更新日志</router-link>
+        <router-link to="/notice">公告</router-link>
         <span>/</span>
         <span class="current">{{ item.title }}</span>
       </nav>
@@ -12,7 +12,7 @@
       <div v-if="loading" class="state-box">加载中...</div>
       <div v-else-if="!item" class="state-box">
         <p>公告不存在或已下线</p>
-        <router-link to="/notice" class="btn btn-primary">返回更新日志</router-link>
+        <router-link to="/notice" class="btn btn-primary">返回公告</router-link>
       </div>
 
       <article v-else class="notice-wrap">
@@ -26,7 +26,7 @@
         <div class="notice-content" v-html="item.content || ''"></div>
 
         <div class="notice-actions">
-          <router-link to="/notice" class="btn btn-outline">← 返回更新日志</router-link>
+          <router-link to="/notice" class="btn btn-outline">← 返回公告</router-link>
         </div>
       </article>
     </div>
@@ -50,7 +50,7 @@ async function load() {
   item.value = data
   if (data) {
     applySeoMeta({
-      title: data.seoTitle || `${data.title} - 云客CRM更新日志`,
+      title: data.seoTitle || `${data.title} - 云客CRM公告`,
       description: data.seoDescription || data.summary,
       keywords: data.seoKeywords
     })
