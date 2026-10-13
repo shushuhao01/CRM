@@ -322,4 +322,27 @@ const formatTime = (timeStr: string) => {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ========== 深色模式适配：覆盖上方硬编码的浅色背景/文字 ========== */
+html.dark .sync-description {
+  background: var(--crm-dark-raised);
+}
+
+html.dark .sync-description p {
+  color: var(--crm-dark-text-regular);
+}
+
+html.dark .sync-info-item {
+  background: var(--crm-dark-raised);
+  border-color: var(--crm-dark-border-light);
+}
+
+html.dark .info-label {
+  color: var(--crm-dark-text-muted);
+}
+
+html.dark .info-value {
+  color: var(--crm-dark-text-primary);
+}
+
 </style>
