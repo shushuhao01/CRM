@@ -164,6 +164,8 @@ start-backend-dev.ps1
 # ==================== 🟢 四级敏感：数据文件 ====================
 # 租户数据导出文件（客户真实数据）
 backend/exports/
+# 清理脚本的 mysqldump 备份与导出档案（含客户真实数据）
+backend/backups/
 
 # 测试输出文件
 tsc-result*.txt
