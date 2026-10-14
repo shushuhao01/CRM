@@ -11,7 +11,7 @@ export interface DataListParams {
   pageSize?: number
   status?: 'pending' | 'assigned' | 'archived' | 'recovered'
   dateRange?: string[]
-  dateFilter?: 'today' | 'yesterday' | 'thisWeek' | 'last30Days' | 'thisMonth' | 'thisYear' | 'all'
+  dateFilter?: 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'all'
   searchKeyword?: string
   assigneeId?: string
   departmentId?: string

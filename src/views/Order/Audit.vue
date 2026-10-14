@@ -132,6 +132,7 @@
           <el-date-picker
             v-model="searchForm.dateRange"
             type="daterange"
+            unlink-panels
             range-separator="至"
             start-placeholder="开始日期"
             end-placeholder="结束日期"
@@ -269,6 +270,14 @@
 
       <template #column-depositAmount="{ row }">
         <span class="deposit-amount">¥{{ (row.depositAmount || 0).toLocaleString() }}</span>
+      </template>
+
+      <template #column-shippingFee="{ row }">
+        <span class="amount">¥{{ (row.shippingFee || 0).toLocaleString() }}</span>
+      </template>
+
+      <template #column-payableAmount="{ row }">
+        <span class="amount">¥{{ ((row.totalAmount || 0) + (row.shippingFee || 0)).toLocaleString() }}</span>
       </template>
 
       <template #column-paymentScreenshots="{ row }">
@@ -507,6 +516,18 @@
               <div class="info-item">
                 <span class="label">订单金额：</span>
                 <span class="value amount">¥{{ currentOrder.totalAmount?.toLocaleString() }}</span>
+              </div>
+            </el-col>
+            <el-col :span="12">
+              <div class="info-item">
+                <span class="label">邮费：</span>
+                <span class="value amount">¥{{ (currentOrder.shippingFee || 0).toLocaleString() }}</span>
+              </div>
+            </el-col>
+            <el-col :span="12">
+              <div class="info-item">
+                <span class="label">应付总额：</span>
+                <span class="value amount">¥{{ ((currentOrder.totalAmount || 0) + (currentOrder.shippingFee || 0)).toLocaleString() }}</span>
               </div>
             </el-col>
             <el-col :span="12">
@@ -1034,6 +1055,8 @@ interface AuditOrder {
   createdById?: string    // 创建人ID
   totalAmount: number
   depositAmount: number
+  shippingFee?: number
+  payableAmount?: number
   codAmount: number
   productCount: number
   products?: Array<{     // 商品列表
@@ -1262,6 +1285,20 @@ const tableColumns = computed(() => [
     width: 85,
     align: 'right',
     visible: true
+  },
+  {
+    prop: 'shippingFee',
+    label: '邮费',
+    width: 85,
+    align: 'right',
+    visible: false
+  },
+  {
+    prop: 'payableAmount',
+    label: '应付总额',
+    width: 100,
+    align: 'right',
+    visible: false
   },
   {
     prop: 'paymentScreenshots',
@@ -2283,7 +2320,9 @@ const loadOrderList = async () => {
           salesPerson: order.salesPerson || order.createdByName || '-',
           totalAmount: order.totalAmount || 0,
           depositAmount: order.depositAmount || 0,
-          codAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
+          shippingFee: order.shippingFee || 0,
+          payableAmount: (order.totalAmount || 0) + (order.shippingFee || 0),
+          codAmount: (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0),
           productCount: order.products?.length || 0,
           products: order.products || [],
           createTime: order.createTime,

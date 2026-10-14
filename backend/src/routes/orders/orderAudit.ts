@@ -11,6 +11,8 @@ import { formatDateTime } from '../../utils/dateFormat';
 import { formatToBeijingTime, saveStatusHistory } from './orderHelpers';
 import { log } from '../../config/logger';
 import { writeOperationLog, extractUserInfo } from '../../utils/operationLogWriter';
+import { notifyDashboardDataChanged } from '../../utils/dashboardBroadcast';
+import { TenantContextManager } from '../../utils/tenantContext';
 export function registerAuditRoutes(router: Router): void {router.get('/audit-list', authenticateToken, async (req: Request, res: Response) => {
   try {
     const orderRepository = getTenantRepo(Order);
@@ -49,6 +51,7 @@ export function registerAuditRoutes(router: Router): void {router.get('/audit-li
         'order.customerPhone',
         'order.totalAmount',
         'order.depositAmount',
+        'order.shippingFee',
         'order.depositScreenshots',
         'order.status',
         'order.markType',
@@ -135,7 +138,9 @@ export function registerAuditRoutes(router: Router): void {router.get('/audit-li
         products,
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
-        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        shippingFee: Number(order.shippingFee) || 0,
+        payableAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0),
+        collectAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0),
         status: order.status,
         // 🔥 修复：正确映射auditStatus
         // pending_audit 和 pending_transfer -> pending（待审核）
@@ -305,6 +310,9 @@ router.post('/cancel-request', authenticateToken, async (req: Request, res: Resp
       createdByName: order.createdByName
     }, cancelReason).catch(err => log.error('[取消申请] 发送通知失败:', err));
 
+    // 🔥 广播看板数据变更（订单取消申请）
+    notifyDashboardDataChanged('orders', (req as any).tenantId || TenantContextManager.getTenantId());
+
     res.json({
       success: true,
       code: 200,
@@ -382,11 +390,11 @@ router.get('/pending-cancel', async (req: Request, res: Response) => {
     res.json({
       success: true,
       code: 200,
-      data: formattedOrders,
-      pagination: {
+      data: {
+        list: formattedOrders,
+        total,
         page,
         pageSize,
-        total,
         totalPages: Math.ceil(total / pageSize)
       }
     });
@@ -511,11 +519,11 @@ router.get('/audited-cancel', async (req: Request, res: Response) => {
     res.json({
       success: true,
       code: 200,
-      data: formattedOrders,
-      pagination: {
+      data: {
+        list: formattedOrders,
+        total,
         page,
         pageSize,
-        total,
         totalPages: Math.ceil(total / pageSize)
       }
     });

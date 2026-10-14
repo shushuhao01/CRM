@@ -270,12 +270,27 @@
         <div class="upload-tip" v-else>自定义底部显示的技术支持信息</div>
       </el-form-item>
     </el-form>
+
+    <!-- 二维码预览弹窗 -->
+    <el-dialog
+      v-model="qrPreviewVisible"
+      title="二维码预览"
+      width="440px"
+      align-center
+      append-to-body
+      destroy-on-close
+      class="qr-preview-dialog"
+    >
+      <div class="qr-preview-dialog-body">
+        <img v-if="form.contactQRCode" :src="form.contactQRCode" alt="二维码" />
+      </div>
+    </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Upload, DocumentCopy, Delete, ZoomIn, Picture } from '@element-plus/icons-vue'
 // Plus 图标已随系统Logo上传功能一起注释禁用
 import { useConfigStore } from '@/stores/config'
@@ -288,6 +303,7 @@ const userStore = useUserStore()
 const loading = ref(false)
 const formRef = ref()
 const qrFileInput = ref<HTMLInputElement>()
+const qrPreviewVisible = ref(false)
 
 // 部署模式判断
 const isSaasMode = computed(() => getDeployMode() === 'saas')
@@ -420,17 +436,7 @@ const pasteQRImage = async () => {
 // 预览二维码
 const previewQRCode = () => {
   if (form.value.contactQRCode) {
-    ElMessageBox.alert(
-      `<div style="text-align: center; padding: 20px;">
-        <img src="${form.value.contactQRCode}" alt="二维码" style="max-width: 400px; max-height: 400px; border: 1px solid #ddd; border-radius: 8px;" />
-      </div>`,
-      '二维码预览',
-      {
-        dangerouslyUseHTMLString: true,
-        showConfirmButton: false,
-        showClose: true
-      }
-    )
+    qrPreviewVisible.value = true
   }
 }
 
@@ -634,6 +640,23 @@ onMounted(() => {
   margin-top: 10px;
   color: #909399;
   font-size: 12px;
+}
+
+/* 二维码预览弹窗 */
+.qr-preview-dialog-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0 16px;
+}
+
+.qr-preview-dialog-body img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  object-fit: contain;
 }
 
 .override-alert {

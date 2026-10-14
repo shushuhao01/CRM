@@ -168,7 +168,7 @@
       </el-table-column>
       <el-table-column label="原始代收金额" width="120" align="right">
         <template #default="{ row }">
-          <span style="color: #909399;">¥{{ formatMoney((row.totalAmount || 0) - (row.depositAmount || 0)) }}</span>
+          <span style="color: #909399;">¥{{ formatMoney((row.totalAmount || 0) + (row.shippingFee || 0) - (row.depositAmount || 0)) }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="codAmount" label="当前代收金额" width="120" align="right">
@@ -310,7 +310,7 @@
     <el-dialog v-model="codDialogVisible" :title="isBatchCod ? '批量修改代收' : '修改代收金额'" width="450px">
       <el-form :model="codForm" label-width="120px">
         <el-form-item label="原始代收金额" v-if="!isBatchCod && currentOrder">
-          <span style="color: #909399;">¥{{ formatMoney((currentOrder.totalAmount || 0) - (currentOrder.depositAmount || 0)) }}</span>
+          <span style="color: #909399;">¥{{ formatMoney((currentOrder.totalAmount || 0) + (currentOrder.shippingFee || 0) - (currentOrder.depositAmount || 0)) }}</span>
         </el-form-item>
         <el-form-item label="当前代收金额" v-if="!isBatchCod && currentOrder">
           <span style="color: #e6a23c; font-weight: 600;">¥{{ formatMoney(currentOrder.codAmount) }}</span>
@@ -486,7 +486,7 @@ const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).p
 // 判断订单是否改过代收
 const hasModifiedCod = (order: any) => {
   if (!order) return false
-  const originalCodAmount = (order.totalAmount || 0) - (order.depositAmount || 0)
+  const originalCodAmount = (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)
   const currentCodAmount = order.codAmount || 0
   return currentCodAmount < originalCodAmount
 }
@@ -494,7 +494,7 @@ const hasModifiedCod = (order: any) => {
 // 判断是否是无需代收的订单（原始代收金额为0）
 const isZeroCodOrder = (order: any) => {
   if (!order) return false
-  const originalCodAmount = (order.totalAmount || 0) - (order.depositAmount || 0)
+  const originalCodAmount = (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)
   return originalCodAmount === 0
 }
 
@@ -744,7 +744,7 @@ const getOrderStatusText = (s: string) => ({
   exception: '异常'
 }[s] || s)
 const getCodStatusType = (r: CodOrder) => {
-  const originalCodAmount = (r.totalAmount || 0) - (r.depositAmount || 0)
+  const originalCodAmount = (r.totalAmount || 0) + (r.shippingFee || 0) - (r.depositAmount || 0)
   // 原始代收金额为0：灰色（info）
   if (originalCodAmount === 0) return 'info'
   // 已返款：绿色（success）
@@ -757,7 +757,7 @@ const getCodStatusType = (r: CodOrder) => {
 const getCodStatusText = (r: CodOrder) => {
   // 🔥 代收状态显示逻辑
   // 1. 计算原始代收金额
-  const originalCodAmount = (r.totalAmount || 0) - (r.depositAmount || 0)
+  const originalCodAmount = (r.totalAmount || 0) + (r.shippingFee || 0) - (r.depositAmount || 0)
 
   // 2. 如果原始代收金额为0，显示"无需代收"
   if (originalCodAmount === 0) {
@@ -955,7 +955,7 @@ const buildCodExportRows = (rows: CodOrder[], logsMap: Record<string, any>) => {
     客户姓名: row.customerName,
     订单状态: getOrderStatusText(row.status),
     订单金额: Number(row.finalAmount || 0),
-    原始代收金额: Number((row.totalAmount || 0) - (row.depositAmount || 0)),
+    原始代收金额: Number((row.totalAmount || 0) + (row.shippingFee || 0) - (row.depositAmount || 0)),
     当前代收金额: Number(row.codAmount || 0),
     代收状态: getCodStatusText(row),
     销售人员: row.salesPersonName || '',
@@ -1142,9 +1142,9 @@ const handleOrderUpdate = () => {
   &.pending { background: linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%); color: #e74c3c; }
 }
 .stat-info { .stat-value { font-size: 24px; font-weight: 600; color: #303133; } .stat-label { font-size: 13px; color: #909399; margin-top: 4px; } }
-.quick-filters { margin-bottom: 16px; }
-.quick-btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
-.quick-btn { padding: 8px 16px; border: 1px solid #dcdfe6; border-radius: 20px; background: #fff; color: #606266; cursor: pointer; transition: all 0.2s; font-size: 13px; &:hover { border-color: #409eff; color: #409eff; } &.active { background: #409eff; border-color: #409eff; color: #fff; } }
+.quick-filters { background: #fff; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+.quick-btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+.quick-btn { padding: 8px 16px; border: 1px solid #dcdfe6; border-radius: 6px; background: #fff; color: #606266; font-size: 13px; cursor: pointer; transition: all 0.2s; &:hover { color: #409eff; border-color: #c6e2ff; background: #ecf5ff; } &.active { color: #fff; background: #409eff; border-color: #409eff; } }
 .filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; background: #fff; padding: 16px; border-radius: 8px; }
 .filter-item { flex: 1; min-width: 100px; }
 .filter-search { flex: 1; min-width: 120px; }

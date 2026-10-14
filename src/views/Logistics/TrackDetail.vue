@@ -94,8 +94,8 @@
                 placement="top"
               >
                 <div class="track-item">
-                  <div class="track-status" :class="item.type">
-                    {{ item.status }}
+                  <div class="track-status" :class="item.type" v-if="getReadableStatus(item.status)">
+                    {{ getReadableStatus(item.status) }}
                   </div>
                   <div class="track-description">
                     {{ item.description }}
@@ -484,44 +484,52 @@ const loadTrackingData = async () => {
 
     console.log('[物流跟踪详情] 加载数据，参数ID:', paramId)
 
-    // 🔥 首先尝试从API获取订单数据
-    let order = null
-    try {
-      const { apiService } = await import('@/services/apiService')
-      // 尝试通过订单ID获取
-      const response = await apiService.get(`/orders/${paramId}`)
-      // 🔥 修复：apiService.get 直接返回 data，不需要再访问 .data
-      if (response) {
-        order = response
-        console.log('[物流跟踪详情] 从API获取订单成功:', order.orderNumber)
+    // 🔥 修复：路由参数是「物流单号」，不能直接请求 /orders/{运单号}（会404并弹全局错误）
+    // 先在本地store中匹配（支持订单ID、物流单号、订单号）
+    let order: any = null
+    let matched: any = null
+    const allOrders = orderStore.getOrders()
+    console.log('[物流跟踪详情] store中订单总数:', allOrders.length)
+
+    order = allOrders.find(o =>
+      o.id === paramId ||
+      o.id === String(paramId) ||
+      String(o.id) === String(paramId) ||
+      o.trackingNumber === paramId ||
+      o.expressNo === paramId ||
+      o.orderNumber === paramId
+    )
+
+    // store未命中时，通过物流单号查询订单（/orders/by-tracking-no，命中返回订单id）
+    if (!order && paramId) {
+      try {
+        const { api } = await import('@/api/request')
+        const orderRes = await api.get<any>('/orders/by-tracking-no', {
+          params: { trackingNo: String(paramId) },
+          // 🔥 抑制「请求的资源不存在」全局提示
+          showError: false
+        })
+        if (orderRes?.success && orderRes.data) {
+          matched = orderRes.data
+          console.log('[物流跟踪详情] 通过运单号匹配到订单:', matched.orderNumber || matched.id)
+        }
+      } catch (_apiError) {
+        console.log('[物流跟踪详情] 通过运单号查询订单失败:', _apiError)
       }
-    } catch (_apiError) {
-      console.log('[物流跟踪详情] API获取失败，尝试从store查找')
     }
 
-    // 如果API获取失败，从订单store中查找
-    if (!order) {
-      const allOrders = orderStore.getOrders()
-      console.log('[物流跟踪详情] store中订单总数:', allOrders.length)
-
-      // 🔥 修复：支持通过订单ID、物流单号、订单号等多种方式查找
-      order = allOrders.find(o =>
-        o.id === paramId ||
-        o.id === String(paramId) ||
-        String(o.id) === String(paramId)
-      )
-
-      // 如果通过ID找不到，尝试通过物流单号查找
-      if (!order) {
-        order = allOrders.find(o =>
-          o.trackingNumber === paramId ||
-          o.expressNo === paramId
-        )
-      }
-
-      // 如果还找不到，尝试通过订单号查找
-      if (!order) {
-        order = allOrders.find(o => o.orderNumber === paramId)
+    // 匹配到订单后，尝试获取完整订单信息（含收件人、物流状态等字段）
+    if (matched) {
+      if (matched.id) {
+        try {
+          const { apiService } = await import('@/services/apiService')
+          order = (await apiService.get(`/orders/${matched.id}`)) || matched
+        } catch (_fullErr) {
+          console.log('[物流跟踪详情] 获取完整订单失败，使用运单号匹配结果')
+          order = matched
+        }
+      } else {
+        order = matched
       }
     }
 
@@ -551,7 +559,7 @@ const loadTrackingData = async () => {
       senderName: '发货方', // 可以从订单或配置中获取
       senderAddress: '', // 可以从订单或配置中获取
       receiverName: order.receiverName || order.customerName || '',
-      receiverAddress: order.receiverAddress || '',
+      receiverAddress: order.receiverAddress || order.shippingAddress || order.address || '',
       // 🔥 修复：优先使用shippingTime，其次shippedAt
       shipTime: order.shippingTime || order.shippedAt || '',
       estimatedTime: order.expectedDeliveryDate || '',
@@ -644,22 +652,20 @@ const fetchRealTraces = async (order: any) => {
 
         trackingHistory.value = sortedTraces.map((trace: any, index: number) => ({
           time: trace.time || '',
-          status: trace.status || detectStatusFromDescription(trace.description),
+          status: resolveTraceStatusText(trace.status, trace.description),
           description: trace.description || '',
           location: trace.location || '',
           operator: trace.operator || '',
           type: index === 0 ? 'success' : 'primary'
         }))
 
-        // 🔥 同步更新物流状态（使用最新轨迹的信息）
+        // 🔥 修复：以「最新轨迹」推导物流状态，避免状态与轨迹不一致（如已签收仍显示已揽收）
         if (sortedTraces.length > 0) {
-          const latestDesc = sortedTraces[0].description || ''
-          const detectedStatus = detectLogisticsStatusFromDesc(latestDesc)
-          if (detectedStatus && detectedStatus !== trackingInfo.status) {
+          const detectedStatus = detectLogisticsStatusFromTrace(sortedTraces[0])
+          if (detectedStatus) {
             trackingInfo.status = detectedStatus
-          }
-          // 更新API返回的状态
-          if (data.status && data.status !== 'error' && data.status !== 'need_phone_verify') {
+          } else if (data.status && data.status !== 'error' && data.status !== 'need_phone_verify') {
+            // 无法从轨迹判定时才回退使用接口状态
             trackingInfo.status = data.status
           }
         }
@@ -709,6 +715,70 @@ const detectLogisticsStatusFromDesc = (desc: string): string => {
   if (d.includes('退回')) return 'returned'
   if (d.includes('异常')) return 'exception'
   return ''
+}
+
+/**
+ * 快递操作码（opCode）→ 物流状态 的映射
+ */
+const TRACE_OPCODE_STATUS: Record<string, string> = {
+  '50': 'picked_up',
+  '30': 'in_transit',
+  '31': 'in_transit',
+  '33': 'in_transit',
+  '36': 'out_for_delivery',
+  '44': 'out_for_delivery',
+  '80': 'delivered',
+  '8000': 'delivered',
+  '99': 'exception',
+  '648': 'exception'
+}
+
+/**
+ * 快递操作码（opCode）→ 显示文本
+ */
+const TRACE_OPCODE_TEXT: Record<string, string> = {
+  '50': '已揽收',
+  '30': '运输中',
+  '31': '到达',
+  '33': '已收件',
+  '36': '派送中',
+  '44': '派件中',
+  '80': '已签收',
+  '8000': '已签收',
+  '99': '异常',
+  '648': '异常'
+}
+
+/**
+ * 根据「最新轨迹」推导物流状态code（优先操作码映射，其次中文描述）
+ */
+const detectLogisticsStatusFromTrace = (trace: any): string => {
+  if (!trace) return ''
+  const opCode = trace.status != null ? String(trace.status) : ''
+  if (TRACE_OPCODE_STATUS[opCode]) return TRACE_OPCODE_STATUS[opCode]
+  return detectLogisticsStatusFromDesc(trace.description || '')
+}
+
+/**
+ * 解析轨迹状态显示文本：
+ * 优先使用中文描述，其次用操作码映射；纯数字且无法识别时返回空（隐藏）
+ */
+const resolveTraceStatusText = (status: string, description: string): string => {
+  const descText = detectStatusFromDescription(description)
+  if (descText && descText !== '物流动态') return descText
+  const code = status != null ? String(status) : ''
+  if (code && TRACE_OPCODE_TEXT[code]) return TRACE_OPCODE_TEXT[code]
+  if (code && !/^\d+$/.test(code)) return code
+  return ''
+}
+
+/**
+ * 过滤纯数字状态码（快递操作码），避免直接展示在界面上
+ */
+const getReadableStatus = (status: string): string => {
+  if (!status) return ''
+  if (/^\d+$/.test(status)) return ''
+  return status
 }
 
 /**

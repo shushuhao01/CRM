@@ -151,9 +151,15 @@ export const checkDepartmentOrderLimit = async (
 ): Promise<OrderLimitCheckResult> => {
   try {
     const limitRepository = getTenantRepo(DepartmentOrderLimit);
-    const limit = await limitRepository.findOne({
+    // 先查具体部门配置，查不到再回退「全部部门」(__ALL__) 配置
+    let limit = await limitRepository.findOne({
       where: { departmentId, isEnabled: true }
     });
+    if (!limit) {
+      limit = await limitRepository.findOne({
+        where: { departmentId: '__ALL__', isEnabled: true }
+      });
+    }
 
     if (!limit) {
       return { allowed: true };
@@ -161,7 +167,7 @@ export const checkDepartmentOrderLimit = async (
 
     const orderRepository = getTenantRepo(Order);
 
-    // 检查下单次数限制
+    // 检查下单次数限制（次数按客户在该实际部门的既有订单统计）
     if (limit.orderCountEnabled && limit.maxOrderCount > 0) {
       const orderCount = await orderRepository.count({
         where: {

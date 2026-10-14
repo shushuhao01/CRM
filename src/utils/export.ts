@@ -244,6 +244,8 @@ export interface ExportOrder {
   totalQuantity: number
   totalAmount: number
   depositAmount: number
+  shippingFee?: number
+  payableAmount?: number
   codAmount: number
   customerGender?: string  // 🔥 新增：性别
   customerAge?: number
@@ -332,6 +334,8 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
     '总数量',
     '订单金额',
     '定金',
+    '邮费',
+    '应付总额',
     'COD金额',
     '性别',
     '年龄',
@@ -363,6 +367,8 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
     '总数量',
     '订单金额',
     '定金',
+    '邮费',
+    '应付总额',
     'COD金额',
     '性别',
     '订单来源',
@@ -398,6 +404,8 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
         order.totalQuantity,
         order.totalAmount,
         order.depositAmount,
+        order.shippingFee || 0,
+        (order.totalAmount || 0) + (order.shippingFee || 0),
         order.codAmount,
         getGenderText(order.customerGender || ''),
         order.customerAge || '',
@@ -430,6 +438,8 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
         order.totalQuantity,
         order.totalAmount,
         order.depositAmount,
+        order.shippingFee || 0,
+        (order.totalAmount || 0) + (order.shippingFee || 0),
         order.codAmount,
         getGenderText(order.customerGender || ''),
         getOrderSourceText(order.orderSource || ''),
@@ -459,7 +469,7 @@ export const exportOrdersToExcel = (orders: ExportOrder[], filename: string = '�
 
   // 只设置电话和金额字段为数字格式
   const phoneColumns = ['客户电话', '收货电话']
-  const amountColumns = ['订单金额', '定金', 'COD金额']
+  const amountColumns = ['订单金额', '定金', '邮费', '应付总额', 'COD金额']
 
   // 设置电话号码为数字格式
   phoneColumns.forEach(colName => {

@@ -80,6 +80,28 @@
                 <div class="amount-value-modern">¥{{ (orderDetail.totalAmount || 0).toFixed(2) }}</div>
               </div>
             </div>
+            <div class="amount-card-modern shipping-modern">
+              <div class="amount-icon-modern"><el-icon><Van /></el-icon></div>
+              <div class="amount-content-modern">
+                <div class="amount-label-modern">
+                  <el-tooltip content="邮费为独立字段，不计入订单总额" placement="top">
+                    <span>邮费</span>
+                  </el-tooltip>
+                </div>
+                <div class="amount-value-modern">¥{{ (orderDetail.shippingFee || 0).toFixed(2) }}</div>
+              </div>
+            </div>
+            <div class="amount-card-modern payable-modern">
+              <div class="amount-icon-modern"><el-icon><Wallet /></el-icon></div>
+              <div class="amount-content-modern">
+                <div class="amount-label-modern">
+                  <el-tooltip content="应付总额 = 订单总额 + 邮费" placement="top">
+                    <span>应付总额</span>
+                  </el-tooltip>
+                </div>
+                <div class="amount-value-modern">¥{{ ((orderDetail.totalAmount || 0) + (orderDetail.shippingFee || 0)).toFixed(2) }}</div>
+              </div>
+            </div>
             <div class="amount-card-modern deposit-modern" v-if="(orderDetail.depositAmount || 0) > 0">
               <div class="amount-icon-modern"><el-icon><CreditCard /></el-icon></div>
               <div class="amount-content-modern">
@@ -93,7 +115,7 @@
                 <div class="amount-label-modern">代收</div>
                 <div class="amount-value-modern">
                   <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
-                    <span>¥{{ ((orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)).toFixed(2) }}</span>
+                    <span>¥{{ ((orderDetail.totalAmount || 0) + (orderDetail.shippingFee || 0) - (orderDetail.depositAmount || 0)).toFixed(2) }}</span>
                     <el-tooltip :content="codCancelDisabledReason" :disabled="canApplyCodCancel" placement="top">
                       <span>
                         <el-button type="warning" size="small" :disabled="!canApplyCodCancel" @click="$emit('apply-cod-cancel')">
@@ -162,7 +184,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ShoppingBag, Money, CreditCard, Wallet, ZoomIn } from '@element-plus/icons-vue'
+import { ShoppingBag, Money, CreditCard, Wallet, ZoomIn, Van } from '@element-plus/icons-vue'
 import { getPaymentMethodText } from './helpers'
 
 defineProps<{
@@ -219,6 +241,10 @@ const previewScreenshot = (index: number) => {
 .total-modern .amount-value-modern { color: #2563eb; }
 .deposit-modern .amount-value-modern { color: #d97706; }
 .collect-modern .amount-value-modern { color: #16a34a; }
+.shipping-modern .amount-icon-modern { background: #f0f9ff; color: #0284c7; }
+.shipping-modern .amount-value-modern { color: #0284c7; }
+.payable-modern .amount-icon-modern { background: #eef2ff; color: #4338ca; }
+.payable-modern .amount-value-modern { color: #4338ca; }
 
 /* 金额明细 */
 .amount-row-detail { display: flex; gap: 32px; padding: 16px 20px; background: rgba(255, 255, 255, 0.8); border-radius: 8px; border: 1px solid rgba(228, 231, 237, 0.6); backdrop-filter: blur(10px); margin-top: 8px; }

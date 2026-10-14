@@ -55,6 +55,18 @@ import {
   getDepartmentRegionRestrictionConfig,
   saveDepartmentRegionRestrictionConfig,
 } from '../../utils/regionRestriction';
+import {
+  getAgeGenderCustomerConfig,
+  saveAgeGenderCustomerConfig,
+  getDepartmentAgeGenderRestrictions,
+  saveDepartmentAgeGenderRestrictions,
+  type AgeGenderCustomerConfig,
+} from '../../utils/ageGenderRestriction';
+import {
+  getOrderSubmitRestrictionConfig,
+  saveOrderSubmitRestrictionConfig,
+  type OrderSubmitRestrictionConfig,
+} from '../../utils/orderSubmitRestriction';
 import path from 'path';
 import fs from 'fs';
 
@@ -289,6 +301,128 @@ router.put('/department-region-restrictions', authenticateToken, requireAdmin, a
   } catch (error) {
     log.error('保存部门地区限制配置失败:', error);
     res.status(500).json({ success: false, code: 500, message: '保存部门地区限制配置失败' });
+  }
+});
+
+// ========== 年龄/性别限制配置路由（限制建户年龄/性别 + 部门+年龄/性别下单限制） ==========
+
+/**
+ * @route GET /api/v1/system/age-gender-restrictions/customer
+ * @desc 获取客户年龄/性别限制配置（仅用于建户校验）
+ * @access Private
+ */
+router.get('/age-gender-restrictions/customer', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const tenantId = TenantContextManager.getTenantId() || null;
+    const config = await getAgeGenderCustomerConfig(tenantId);
+    res.json({ success: true, code: 200, data: config });
+  } catch (error) {
+    log.error('获取客户年龄性别限制配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取客户年龄性别限制配置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/age-gender-restrictions/customer
+ * @desc 保存客户年龄/性别限制配置（仅管理员）
+ * @access Private (Admin)
+ */
+router.put('/age-gender-restrictions/customer', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = (req.body || {}) as Partial<AgeGenderCustomerConfig>;
+    const config: AgeGenderCustomerConfig = {
+      ageEnabled: !!body.ageEnabled,
+      ageMin: Number(body.ageMin) || 0,
+      ageMax: Number(body.ageMax) || 0,
+      genderEnabled: !!body.genderEnabled,
+      genders: Array.isArray(body.genders) ? body.genders.map(String) : [],
+    };
+    const tenantId = TenantContextManager.getTenantId() || null;
+    await saveAgeGenderCustomerConfig(tenantId, config);
+    log.info(`✅ [年龄性别限制] 客户建户限制配置已保存`);
+    res.json({ success: true, code: 200, message: '客户年龄性别限制配置保存成功' });
+  } catch (error) {
+    log.error('保存客户年龄性别限制配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '保存客户年龄性别限制配置失败' });
+  }
+});
+
+/**
+ * @route GET /api/v1/system/department-age-gender-restrictions
+ * @desc 获取部门+年龄/性别下单限制配置
+ * @access Private
+ */
+router.get('/department-age-gender-restrictions', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const tenantId = TenantContextManager.getTenantId() || null;
+    const records = await getDepartmentAgeGenderRestrictions(tenantId);
+    res.json({ success: true, code: 200, data: records });
+  } catch (error) {
+    log.error('获取部门年龄性别限制配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取部门年龄性别限制配置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/department-age-gender-restrictions
+ * @desc 保存部门+年龄/性别下单限制配置（全量覆盖，仅管理员）
+ * @access Private (Admin)
+ */
+router.put('/department-age-gender-restrictions', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const records = Array.isArray(req.body) ? req.body : [];
+    const tenantId = TenantContextManager.getTenantId() || null;
+    await saveDepartmentAgeGenderRestrictions(tenantId, records);
+    log.info(`✅ [年龄性别限制] 部门+年龄/性别下单限制配置已保存，共 ${records.length} 条`);
+    res.json({ success: true, code: 200, message: '部门年龄性别限制配置保存成功' });
+  } catch (error) {
+    log.error('保存部门年龄性别限制配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '保存部门年龄性别限制配置失败' });
+  }
+});
+
+// ========== 下单提交限制配置路由（邮费最大金额限制 + 定金截图必填） ==========
+
+/**
+ * @route GET /api/v1/system/order-submit-restrictions
+ * @desc 获取下单提交限制配置（订单配置）
+ * @access Private
+ */
+router.get('/order-submit-restrictions', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const tenantId = TenantContextManager.getTenantId() || null;
+    const config = await getOrderSubmitRestrictionConfig(tenantId);
+    res.json({ success: true, code: 200, data: config });
+  } catch (error) {
+    log.error('获取下单提交限制配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '获取下单提交限制配置失败' });
+  }
+});
+
+/**
+ * @route PUT /api/v1/system/order-submit-restrictions
+ * @desc 保存下单提交限制配置（仅管理员）
+ * @access Private (Admin)
+ */
+router.put('/order-submit-restrictions', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = (req.body || {}) as Partial<OrderSubmitRestrictionConfig>;
+    const config: OrderSubmitRestrictionConfig = {
+      shippingFeeLimitEnabled: !!body.shippingFeeLimitEnabled,
+      maxShippingFee: Number(body.maxShippingFee) || 0,
+      exemptOverseas: !!body.exemptOverseas,
+      depositScreenshotRequired: !!body.depositScreenshotRequired,
+    };
+    if (config.shippingFeeLimitEnabled && !(config.maxShippingFee > 0)) {
+      return res.status(400).json({ success: false, code: 400, message: '启用邮费限制时，最大邮费金额必须大于 0' });
+    }
+    const tenantId = TenantContextManager.getTenantId() || null;
+    await saveOrderSubmitRestrictionConfig(tenantId, config);
+    log.info(`✅ [下单提交限制] 配置已保存`);
+    res.json({ success: true, code: 200, message: '下单提交限制配置保存成功' });
+  } catch (error) {
+    log.error('保存下单提交限制配置失败:', error);
+    res.status(500).json({ success: false, code: 500, message: '保存下单提交限制配置失败' });
   }
 });
 

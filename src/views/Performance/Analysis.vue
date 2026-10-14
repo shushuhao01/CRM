@@ -49,6 +49,7 @@
         <el-date-picker
           v-model="dateRange"
           type="daterange"
+          unlink-panels
           range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
@@ -959,7 +960,7 @@ const viewOrdersByType = (row: any, columnProp: string) => {
         customerName: order.customerName,
         amount: order.totalAmount || 0,
         depositAmount: order.depositAmount || 0,
-        collectionAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
+        collectionAmount: (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0),
         status: order.status,
         trackingNumber: order.trackingNumber || order.expressNo || '',
         productDetails: order.products?.map((item: any) => `${item.name} x${item.quantity}`).join(', ') || '暂无详情'

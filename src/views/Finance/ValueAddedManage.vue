@@ -143,6 +143,7 @@
         <el-date-picker
           v-model="customDateRange"
           type="daterange"
+          unlink-panels
           range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
@@ -1024,14 +1025,10 @@ const copyMissingKeywords = async () => {
 // 快捷日期选项
 const quickDateOptions = [
   { label: '今日', value: 'today' },
+  { label: '昨日', value: 'yesterday' },
+  { label: '本周', value: 'thisWeek' },
   { label: '本月', value: 'thisMonth' },
   { label: '上月', value: 'lastMonth' },
-  { label: '本季', value: 'thisQuarter' },
-  { label: '上季', value: 'lastQuarter' },
-  { label: 'Q1', value: 'q1' },
-  { label: 'Q2', value: 'q2' },
-  { label: 'Q3', value: 'q3' },
-  { label: 'Q4', value: 'q4' },
   { label: '今年', value: 'thisYear' },
   { label: '全部', value: 'all' }
 ]
@@ -1479,6 +1476,16 @@ const handleQuickDateClick = (val: string) => {
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
         endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
         break
+      case 'yesterday':
+        const yesterday = new Date(now.getTime() - 86400000)
+        startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
+        endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
+        break
+      case 'thisWeek':
+        const dayOfWeek = now.getDay() || 7
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1)
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        break
       case 'thisMonth':
         startDate = new Date(now.getFullYear(), now.getMonth(), 1)
         endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -1486,34 +1493,6 @@ const handleQuickDateClick = (val: string) => {
       case 'lastMonth':
         startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
         endDate = new Date(now.getFullYear(), now.getMonth(), 0)
-        break
-      case 'thisQuarter':
-        const thisQuarter = Math.floor(now.getMonth() / 3)
-        startDate = new Date(now.getFullYear(), thisQuarter * 3, 1)
-        endDate = new Date(now.getFullYear(), (thisQuarter + 1) * 3, 0)
-        break
-      case 'lastQuarter':
-        const lastQuarter = Math.floor(now.getMonth() / 3) - 1
-        const lastQuarterYear = lastQuarter < 0 ? now.getFullYear() - 1 : now.getFullYear()
-        const lastQuarterMonth = lastQuarter < 0 ? 3 : lastQuarter
-        startDate = new Date(lastQuarterYear, lastQuarterMonth * 3, 1)
-        endDate = new Date(lastQuarterYear, (lastQuarterMonth + 1) * 3, 0)
-        break
-      case 'q1':
-        startDate = new Date(now.getFullYear(), 0, 1)
-        endDate = new Date(now.getFullYear(), 3, 0)
-        break
-      case 'q2':
-        startDate = new Date(now.getFullYear(), 3, 1)
-        endDate = new Date(now.getFullYear(), 6, 0)
-        break
-      case 'q3':
-        startDate = new Date(now.getFullYear(), 6, 1)
-        endDate = new Date(now.getFullYear(), 9, 0)
-        break
-      case 'q4':
-        startDate = new Date(now.getFullYear(), 9, 1)
-        endDate = new Date(now.getFullYear(), 12, 0)
         break
       case 'thisYear':
         startDate = new Date(now.getFullYear(), 0, 1)
@@ -2572,23 +2551,27 @@ const goToCustomerDetail = (id: string) => {
 }
 
 .quick-filters {
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
   margin-bottom: 16px;
 }
 
 .quick-btn-group {
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .quick-btn {
   padding: 8px 16px;
   border: 1px solid #dcdfe6;
-  border-radius: 20px;
+  border-radius: 6px;
   background: #fff;
   color: #606266;
+  font-size: 13px;
   cursor: pointer;
-  transition: all 0.3s;
-  font-size: 14px;
+  transition: all 0.2s;
 }
 
 .quick-btn:hover {

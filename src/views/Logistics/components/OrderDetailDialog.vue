@@ -139,12 +139,20 @@
               <span class="amount-value main">¥{{ formatNumber(order.totalAmount || order.amount) }}</span>
             </div>
             <div class="amount-item">
+              <span class="amount-label">邮费</span>
+              <span class="amount-value">¥{{ formatNumber(order.shippingFee || 0) }}</span>
+            </div>
+            <div class="amount-item">
+              <span class="amount-label">应付总额</span>
+              <span class="amount-value">¥{{ formatNumber((order.totalAmount || order.amount || 0) + (order.shippingFee || 0)) }}</span>
+            </div>
+            <div class="amount-item">
               <span class="amount-label">定金</span>
               <span class="amount-value">¥{{ formatNumber(order.deposit || order.depositAmount || 0) }}</span>
             </div>
             <div class="amount-item">
               <span class="amount-label">代收金额</span>
-              <span class="amount-value cod">¥{{ formatNumber(order.codAmount || order.collectAmount || 0) }}</span>
+              <span class="amount-value cod">¥{{ formatNumber(order.codAmount ?? order.collectAmount ?? ((order.totalAmount || 0) + (order.shippingFee || 0) - (order.deposit || order.depositAmount || 0))) }}</span>
             </div>
             <div class="amount-item">
               <span class="amount-label">支付方式</span>

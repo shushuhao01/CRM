@@ -257,6 +257,14 @@
           <label>定金</label>
           <input v-model.number="form.depositAmount" class="preview-input" type="number" step="0.01" placeholder="0.00" />
         </div>
+        <div class="form-group">
+          <label>邮费</label>
+          <input v-model.number="form.shippingFee" class="preview-input" type="number" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="qo-amount-row" v-if="Number(form.shippingFee || 0) > 0">
+          <span class="qo-amount-label">应付总额</span>
+          <span class="qo-amount-val" style="color:#409eff">¥{{ payableAmount.toFixed(2) }}</span>
+        </div>
         <div class="qo-amount-row">
           <span class="qo-amount-label">代收金额</span>
           <span class="qo-amount-val" style="color:#f56c6c;font-weight:700">¥{{ collectAmount.toFixed(2) }}</span>
@@ -389,6 +397,14 @@
         <div class="qo-total-bar" v-if="form.depositAmount">
           <span>定金</span>
           <span style="color:#67c23a">-¥{{ Number(form.depositAmount || 0).toFixed(2) }}</span>
+        </div>
+        <div class="qo-total-bar" v-if="Number(form.shippingFee || 0) > 0">
+          <span>邮费</span>
+          <span style="color:#409eff">+¥{{ Number(form.shippingFee || 0).toFixed(2) }}</span>
+        </div>
+        <div class="qo-total-bar" v-if="Number(form.shippingFee || 0) > 0">
+          <span>应付总额</span>
+          <span style="color:#409eff;font-weight:600">¥{{ payableAmount.toFixed(2) }}</span>
         </div>
         <div class="qo-total-bar">
           <span>代收金额</span>
@@ -557,6 +573,7 @@ const form = ref({
   products: [] as { id: any; name: string; price: number; quantity: number; stock: number; image: string }[],
   totalAmount: 0,
   depositAmount: 0,
+  shippingFee: 0,
   depositScreenshots: [] as string[],
   paymentMethod: '',
   serviceWechat: '',
@@ -627,7 +644,8 @@ async function loadSystemConfigs() {
 
 // ========== 计算属性 ==========
 const subtotal = computed(() => form.value.products.reduce((sum, p) => sum + p.price * p.quantity, 0))
-const collectAmount = computed(() => Math.max(Number(form.value.totalAmount || 0) - Number(form.value.depositAmount || 0), 0))
+const collectAmount = computed(() => Math.max(Number(form.value.totalAmount || 0) + Number(form.value.shippingFee || 0) - Number(form.value.depositAmount || 0), 0))
+const payableAmount = computed(() => Number(form.value.totalAmount || 0) + Number(form.value.shippingFee || 0))
 const orderSourceLabel = computed(() => orderSourceOptions.value.find((o: any) => o.value === form.value.orderSource)?.label || form.value.orderSource || '-')
 
 const maskPhone = (p: string) => {
@@ -985,6 +1003,7 @@ const submitOrder = async () => {
       })),
       totalAmount: Number(form.value.totalAmount) || subtotal.value,
       depositAmount: Number(form.value.depositAmount) || 0,
+      shippingFee: Number(form.value.shippingFee) || 0,
       paymentMethod: form.value.paymentMethod,
       paymentMethodOther: (form.value as any).paymentMethodOther || '',
       remark: form.value.remark,
@@ -1015,7 +1034,7 @@ const resetOrder = () => {
   form.value = {
     customerId: '', customerName: '', customerPhone: '',
     receiverName: '', receiverPhone: '', receiverAddress: '',
-    products: [], totalAmount: 0, depositAmount: 0, depositScreenshots: [],
+    products: [], totalAmount: 0, depositAmount: 0, shippingFee: 0, depositScreenshots: [],
     paymentMethod: '', serviceWechat: '', orderSource: '',
     expressCompany: '', markType: 'normal', remark: '',
     customFields: {}

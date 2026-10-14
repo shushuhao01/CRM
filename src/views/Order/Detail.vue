@@ -409,6 +409,7 @@ const orderDetail = reactive({
   discount: 0,
   totalAmount: 0,
   depositAmount: 0,
+  shippingFee: 0,
   codAmount: 0, // 代收金额
   codStatus: 'pending', // 代收状态：pending, cancelled, returned
   hasPendingCodApplication: false, // 是否有待审核的取消代收申请
@@ -1060,8 +1061,8 @@ const canApplyCodCancel = computed(() => {
     return false
   }
 
-  // 🔥 修复：计算原始代收金额（总额-定金），与显示逻辑保持一致
-  const originalCodAmount = (orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)
+  // 🔥 修复：计算原始代收金额（总额+邮费-定金），与显示逻辑保持一致
+  const originalCodAmount = (orderDetail.totalAmount || 0) + (orderDetail.shippingFee || 0) - (orderDetail.depositAmount || 0)
 
   // 必须有代收金额（使用原始计算值，而不是数据库中可能被修改过的codAmount）
   if (originalCodAmount <= 0) {
@@ -1115,8 +1116,8 @@ const codCancelDisabledReason = computed(() => {
     return '订单需要已发货后才能改代收'
   }
 
-  // 🔥 修复：计算原始代收金额（总额-定金），与显示和判断逻辑保持一致
-  const originalCodAmount = (orderDetail.totalAmount || 0) - (orderDetail.depositAmount || 0)
+  // 🔥 修复：计算原始代收金额（总额+邮费-定金），与显示和判断逻辑保持一致
+  const originalCodAmount = (orderDetail.totalAmount || 0) + (orderDetail.shippingFee || 0) - (orderDetail.depositAmount || 0)
   if (originalCodAmount <= 0) {
     return '该订单无代收金额'
   }
@@ -1974,7 +1975,8 @@ const loadOrderDetail = async () => {
       discount: order.discount,
       totalAmount: order.totalAmount,
       depositAmount: order.depositAmount,
-      codAmount: order.codAmount !== undefined ? order.codAmount : ((order.totalAmount || 0) - (order.depositAmount || 0)),
+      shippingFee: order.shippingFee || 0,
+      codAmount: order.codAmount !== undefined ? order.codAmount : ((order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)),
       codStatus: order.codStatus || 'pending',
       hasPendingCodApplication: order.hasPendingCodApplication || false,
       depositScreenshot: order.depositScreenshot || '',

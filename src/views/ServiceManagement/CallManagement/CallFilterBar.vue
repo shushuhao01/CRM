@@ -30,7 +30,7 @@
           <el-date-picker
             :model-value="filterForm.dateRange"
             @update:model-value="updateFilter('dateRange', $event)"
-            type="daterange" range-separator="至"
+            type="daterange" unlink-panels range-separator="至"
             start-placeholder="开始日期" end-placeholder="结束日期"
             format="YYYY-MM-DD" value-format="YYYY-MM-DD"
           />

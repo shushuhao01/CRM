@@ -187,7 +187,7 @@
               <div><strong>订单号：</strong>{{ selectedOrder.orderNumber }}</div>
               <div><strong>客户：</strong>{{ selectedOrder.customerName }} ({{ displaySensitiveInfoNew(selectedOrder.customerPhone, SensitiveInfoType.PHONE) }})</div>
               <div><strong>客户编码：</strong>{{ selectedOrder.customerId }}</div>
-              <div><strong>原始代收金额：</strong><span style="color: #909399;">¥{{ formatMoney((selectedOrder.totalAmount || 0) - (selectedOrder.depositAmount || 0)) }}</span></div>
+              <div><strong>原始代收金额：</strong><span style="color: #909399;">¥{{ formatMoney((selectedOrder.totalAmount || 0) + (selectedOrder.shippingFee || 0) - (selectedOrder.depositAmount || 0)) }}</span></div>
               <div><strong>当前代收金额：</strong><span style="color: #e6a23c; font-weight: 600;">¥{{ formatMoney(selectedOrder.codAmount) }}</span></div>
               <div v-if="hasModifiedCod(selectedOrder)" style="color: #f56c6c; font-size: 12px; margin-top: 4px;">
                 ⚠️ 该订单已改代收，最多只能改为¥0.00
@@ -205,7 +205,7 @@
             <span>{{ selectedOrder?.orderNumber }} - {{ selectedOrder?.customerName }} ({{ displaySensitiveInfoNew(selectedOrder?.customerPhone || '', SensitiveInfoType.PHONE) }})</span>
           </el-form-item>
           <el-form-item label="原始代收金额">
-            <span style="color: #909399;">¥{{ formatMoney((selectedOrder?.totalAmount || 0) - (selectedOrder?.depositAmount || 0)) }}</span>
+            <span style="color: #909399;">¥{{ formatMoney((selectedOrder?.totalAmount || 0) + (selectedOrder?.shippingFee || 0) - (selectedOrder?.depositAmount || 0)) }}</span>
           </el-form-item>
           <el-form-item label="当前代收金额">
             <span style="color: #e6a23c; font-weight: 600;">¥{{ formatMoney(selectedOrder?.codAmount || 0) }}</span>
@@ -344,7 +344,7 @@ const formatMoney = (val: number | string | undefined) => (Number(val) || 0).toF
 // 判断订单是否改过代收
 const hasModifiedCod = (order: any) => {
   if (!order) return false
-  const originalCodAmount = (order.totalAmount || 0) - (order.depositAmount || 0)
+  const originalCodAmount = (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)
   const currentCodAmount = order.codAmount || 0
   return currentCodAmount < originalCodAmount
 }

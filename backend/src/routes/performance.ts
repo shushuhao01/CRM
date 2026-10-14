@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { tenantSQL } from '../utils/tenantRepo';
 import { TenantContextManager } from '../utils/tenantContext';
 import { deployConfig } from '../config/deploy';
+import { notifyDashboardDataChanged } from '../utils/dashboardBroadcast';
 
 import { log } from '../config/logger';
 const router = Router();
@@ -251,6 +252,9 @@ router.post('/shares', async (req: Request, res: Response) => {
       }
     }
 
+    // 🔥 广播看板数据变更（业绩分享创建）
+    notifyDashboardDataChanged('performance', currentTenantId);
+
     res.status(201).json({
       success: true,
       code: 200,
@@ -298,6 +302,12 @@ router.delete('/shares/:id', async (req: Request, res: Response) => {
       `UPDATE performance_shares SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?${tDel.sql}`,
       [id, ...tDel.params]
     );
+
+    // 🔥 广播看板数据变更（业绩分享取消）
+    notifyDashboardDataChanged('performance', (req as any).tenantId || TenantContextManager.getTenantId());
+
+    // 🔥 广播看板数据变更（业绩分享取消-PATCH）
+    notifyDashboardDataChanged('performance', (req as any).tenantId || TenantContextManager.getTenantId());
 
     res.json({ success: true, code: 200, message: '业绩分享已取消' });
   } catch (error) {
@@ -378,6 +388,9 @@ router.post('/shares/:id/confirm', async (req: Request, res: Response) => {
         [id, ...tConfirm.params]
       );
     }
+
+    // 🔥 广播看板数据变更（业绩分享确认）
+    notifyDashboardDataChanged('performance', (req as any).tenantId || TenantContextManager.getTenantId());
 
     res.json({ success: true, code: 200, message: '业绩分享确认成功' });
   } catch (error) {

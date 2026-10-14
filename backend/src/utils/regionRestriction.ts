@@ -38,14 +38,40 @@ export interface RegionRecord {
   isEnabled?: boolean;     // 是否启用（默认启用）
 }
 
-/** 部门+地区下单限制记录 */
+/** 特殊部门ID：代表全部部门 */
+export const ALL_DEPARTMENTS = '__ALL__';
+
+/** 部门+地区下单限制记录（支持多部门 departmentIds，含 '__ALL__'=全部部门） */
 export interface DepartmentRegionRecord {
   id?: string;
-  departmentId: string;
-  departmentName?: string;
+  departmentIds: string[];
+  departmentNames?: string[];
   regions: RegionRecord[];
   isEnabled?: boolean;
 }
+
+/** 规范化部门+地区记录（兼容旧的单部门 departmentId 字段） */
+const normalizeDepartmentRegionRecord = (raw: any): DepartmentRegionRecord => {
+  let ids: string[] = [];
+  if (Array.isArray(raw?.departmentIds)) {
+    ids = raw.departmentIds.map(String);
+  } else if (raw?.departmentId) {
+    ids = [String(raw.departmentId)];
+  }
+  let names: string[] = [];
+  if (Array.isArray(raw?.departmentNames)) {
+    names = raw.departmentNames.map(String);
+  } else if (raw?.departmentName) {
+    names = [String(raw.departmentName)];
+  }
+  return {
+    id: raw?.id,
+    departmentIds: ids,
+    departmentNames: names,
+    regions: Array.isArray(raw?.regions) ? raw.regions : [],
+    isEnabled: raw?.isEnabled !== false,
+  };
+};
 
 /** 待检查的地址输入 */
 export interface AddressInput {
@@ -145,7 +171,7 @@ export const getDepartmentRegionRestrictionConfig = async (
 
     if (!config) return [];
     const value = JSON.parse(config.configValue);
-    return Array.isArray(value) ? value : [];
+    return Array.isArray(value) ? value.map(normalizeDepartmentRegionRecord) : [];
   } catch (error) {
     log.error('[地区限制] 读取部门地区限制配置失败:', error);
     return [];
@@ -310,8 +336,12 @@ export const checkDepartmentRegionRestriction = async (
     const records = await getDepartmentRegionRestrictionConfig(tenantId);
     if (records.length === 0) return { allowed: true };
 
+    const deptId = String(departmentId);
     const deptRecord = records.find(
-      d => d.departmentId === String(departmentId) && d.isEnabled !== false && Array.isArray(d.regions)
+      d =>
+        d.isEnabled !== false &&
+        Array.isArray(d.regions) &&
+        (d.departmentIds.includes(ALL_DEPARTMENTS) || d.departmentIds.includes(deptId))
     );
     if (!deptRecord || deptRecord.regions.length === 0) return { allowed: true };
 
@@ -319,7 +349,13 @@ export const checkDepartmentRegionRestriction = async (
     if (!matched) return { allowed: true };
 
     const label = getRegionLabel(matched);
-    const deptName = deptRecord.departmentName || '当前部门';
+    const isAll = deptRecord.departmentIds.includes(ALL_DEPARTMENTS);
+    const deptName =
+      (deptRecord.departmentNames || []).length > 0
+        ? (deptRecord.departmentNames || []).join('、')
+        : isAll
+          ? '全部部门'
+          : '当前部门';
     const base = `该客户所在地区（${label}）已被限制在【${deptName}】下单，暂时无法下单`;
     return {
       allowed: false,

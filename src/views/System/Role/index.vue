@@ -56,7 +56,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="创建时间">
-          <el-date-picker v-model="searchForm.createTimeRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" style="width: 240px" @change="handleSearch" />
+          <el-date-picker v-model="searchForm.createTimeRange" type="daterange" unlink-panels range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" style="width: 240px" @change="handleSearch" />
         </el-form-item>
         <el-form-item>
           <el-button @click="handleSearch" type="primary" :icon="Search">搜索</el-button>

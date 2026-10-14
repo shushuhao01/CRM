@@ -93,6 +93,7 @@
         <el-date-picker
           v-model="dateRange"
           type="daterange"
+          unlink-panels
           range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
@@ -689,6 +690,7 @@
             <el-date-picker
               v-model="dateRange"
               type="daterange"
+              unlink-panels
               range-separator="至"
               start-placeholder="开始日期"
               end-placeholder="结束日期"
@@ -2682,7 +2684,7 @@ const showSummaryOrdersDialog = async (countType: string) => {
       customerName: order.customerName || '未知客户',
       amount: order.totalAmount || 0,
       depositAmount: order.depositAmount || 0,
-      collectionAmount: (order.totalAmount || 0) - (order.depositAmount || 0),
+      collectionAmount: (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0),
       status: order.status || 'pending',
       logisticsCompany: order.expressCompany || '待发货',
       trackingNumber: order.trackingNumber || '暂无',
@@ -2866,7 +2868,7 @@ const getReceivedSharedOrders = (memberId: string, existingOrderNos: Set<string>
       amount: Math.round(myAmount), // 🔥 显示分享后自己得到的业绩
       originalAmount: originalOrder?.totalAmount || share.orderAmount || 0,
       depositAmount: Math.round((originalOrder?.depositAmount || 0) * myRatio),
-      collectionAmount: Math.round(((originalOrder?.totalAmount || share.orderAmount || 0) - (originalOrder?.depositAmount || 0)) * myRatio),
+      collectionAmount: Math.round(((originalOrder?.totalAmount || share.orderAmount || 0) + (originalOrder?.shippingFee || 0) - (originalOrder?.depositAmount || 0)) * myRatio),
       status: originalOrder?.status || 'pending_audit',
       logisticsCompany: originalOrder?.expressCompany || '待发货',
       trackingNumber: originalOrder?.trackingNumber || originalOrder?.expressNo || '暂无',
@@ -2923,13 +2925,13 @@ const loadOrderTypeData = async (member: TeamMember, status?: string, statusList
       const shareInfo = buildOrderShareInfo(order.orderNumber, String(member.id))
       let displayAmount = order.totalAmount || 0
       let displayDeposit = order.depositAmount || 0
-      let displayCollection = (order.totalAmount || 0) - (order.depositAmount || 0)
+      let displayCollection = (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)
 
       if (shareInfo && shareInfo.isShared) {
         const retainRatio = shareInfo.ownerRetainedPercentage / 100
         displayAmount = Math.round((order.totalAmount || 0) * retainRatio)
         displayDeposit = Math.round((order.depositAmount || 0) * retainRatio)
-        displayCollection = Math.round(((order.totalAmount || 0) - (order.depositAmount || 0)) * retainRatio)
+        displayCollection = Math.round(((order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)) * retainRatio)
       }
 
       return {
@@ -3004,13 +3006,13 @@ const loadMemberOrders = async (memberId: string) => {
       const shareInfo = buildOrderShareInfo(order.orderNumber, String(memberId))
       let displayAmount = order.totalAmount || 0
       let displayDeposit = order.depositAmount || 0
-      let displayCollection = (order.totalAmount || 0) - (order.depositAmount || 0)
+      let displayCollection = (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)
 
       if (shareInfo && shareInfo.isShared) {
         const retainRatio = shareInfo.ownerRetainedPercentage / 100
         displayAmount = Math.round((order.totalAmount || 0) * retainRatio)
         displayDeposit = Math.round((order.depositAmount || 0) * retainRatio)
-        displayCollection = Math.round(((order.totalAmount || 0) - (order.depositAmount || 0)) * retainRatio)
+        displayCollection = Math.round(((order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)) * retainRatio)
       }
 
       return {

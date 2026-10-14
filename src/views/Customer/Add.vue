@@ -151,7 +151,7 @@
             </el-col>
             <el-col :span="8">
               <el-form-item label="性别" prop="gender" v-if="customerFieldConfigStore.isFieldEnabled('gender')">
-                <el-radio-group v-model="customerForm.gender">
+                <el-radio-group v-model="customerForm.gender" @change="checkAgeGenderRestriction">
                   <el-radio label="male">男</el-radio>
                   <el-radio label="female">女</el-radio>
                 </el-radio-group>
@@ -170,6 +170,7 @@
                   placeholder="请输入年龄"
                   style="width: 200px;"
                   controls-position="right"
+                  @change="checkAgeGenderRestriction"
                 />
               </el-form-item>
             </el-col>
@@ -939,6 +940,58 @@ const customerForm = reactive({
   idCard: '',  // 身份证号
   bankCards: [] as Array<{ bank: string; cardNo: string }>  // 银行卡
 })
+
+// 年龄/性别限制配置（来自系统设置-客户配置，仅作用于建户）
+const ageGenderConfig = ref<{ ageEnabled: boolean; ageMin: number; ageMax: number; genderEnabled: boolean; genders: string[] }>({
+  ageEnabled: false, ageMin: 0, ageMax: 0, genderEnabled: false, genders: []
+})
+
+const loadAgeGenderConfig = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch('/api/v1/system/age-gender-restrictions/customer', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await res.json()
+    if (result.success && result.data) {
+      ageGenderConfig.value = {
+        ageEnabled: !!result.data.ageEnabled,
+        ageMin: Number(result.data.ageMin) || 0,
+        ageMax: Number(result.data.ageMax) || 0,
+        genderEnabled: !!result.data.genderEnabled,
+        genders: Array.isArray(result.data.genders) ? result.data.genders : []
+      }
+    }
+  } catch (e) {
+    console.error('[新增客户] 加载年龄/性别限制配置失败:', e)
+  }
+}
+
+// 校验年龄/性别限制，命中则提示并返回 false（年龄/性别未填放行）
+const checkAgeGenderRestriction = (): boolean => {
+  const cfg = ageGenderConfig.value
+  const age = customerForm.age
+  const gender = customerForm.gender
+  // 年龄
+  if (cfg.ageEnabled && (cfg.ageMin > 0 || cfg.ageMax > 0) && age) {
+    const n = Number(age)
+    if ((cfg.ageMin > 0 && n < cfg.ageMin) || (cfg.ageMax > 0 && n > cfg.ageMax)) {
+      const desc = cfg.ageMin > 0 && cfg.ageMax > 0 ? `${cfg.ageMin}-${cfg.ageMax}岁`
+        : cfg.ageMin > 0 ? `不低于${cfg.ageMin}岁` : `不高于${cfg.ageMax}岁`
+      ElMessage.error(`该客户年龄（${n}岁）不符合创建客户资料的要求（允许${desc}），暂时无法添加`)
+      return false
+    }
+  }
+  // 性别
+  if (cfg.genderEnabled && cfg.genders.length > 0 && gender && gender !== 'unknown') {
+    if (!cfg.genders.includes(gender)) {
+      const labels = cfg.genders.map(g => g === 'male' ? '男' : g === 'female' ? '女' : g).join('、')
+      ElMessage.error(`该客户性别不符合创建客户资料的要求（仅允许${labels}），暂时无法添加`)
+      return false
+    }
+  }
+  return true
+}
 
 // 地址数据
 const provinces = ref([])
@@ -1738,6 +1791,9 @@ const handleSubmit = async () => {
     const valid = await customerFormRef.value.validate()
     if (!valid) return
 
+    // 🔒 年龄/性别限制校验（仅作用于建户，命中则拦截提交；编辑不校验）
+    if (!isEdit.value && !checkAgeGenderRestriction()) return
+
     loading.value = true
 
     if (isEdit.value) {
@@ -2223,6 +2279,7 @@ onMounted(async () => {
   await initAddressData()
   loadTags()
   loadCustomerDetail()
+  loadAgeGenderConfig()
 
   // 来电建档：预填号码后自动验证客户是否已存在
   if (phoneFromIncoming.value && isPhoneValid.value) {

@@ -140,6 +140,7 @@
             <el-date-picker
               v-model="dateRange"
               type="daterange"
+              unlink-panels
               range-separator="至"
               start-placeholder="添加开始"
               end-placeholder="添加结束"

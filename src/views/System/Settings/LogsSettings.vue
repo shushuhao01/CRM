@@ -122,7 +122,7 @@
         <div class="card-header logs-header">
           <span>系统日志</span>
           <div class="logs-filter-bar">
-            <el-date-picker v-model="logDateRange" type="daterange" range-separator="-" start-placeholder="开始" end-placeholder="结束" style="width: 220px;" value-format="YYYY-MM-DD" clearable size="default" @change="handleLogFilterChange" />
+            <el-date-picker v-model="logDateRange" type="daterange" unlink-panels range-separator="-" start-placeholder="开始" end-placeholder="结束" style="width: 220px;" value-format="YYYY-MM-DD" clearable size="default" @change="handleLogFilterChange" />
             <el-select v-model="logLevelFilter" placeholder="级别" style="width: 100px;" clearable @change="handleLogFilterChange">
               <el-option label="全部" value="" />
               <el-option label="ERROR" value="ERROR" />

@@ -370,6 +370,7 @@ import MessageCenterDialog from '@/components/MessageCenterDialog.vue'
 import { maskPhonesInText } from '@/utils/sensitiveInfo'
 import { menuConfig } from '@/config/menu'
 import { hasMenuPermission } from '@/utils/menu'
+import { webSocketService } from '@/services/webSocketService'
 
 // 定义组件名称
 defineOptions({
@@ -2129,6 +2130,31 @@ const handlePerformanceDataUpdate = async () => {
   loadDashboardData()
 }
 
+// 🔥 方案A：订阅后端「看板数据变更」广播，节流刷新看板
+// 订单/客户/业绩/物流等写操作会触发后端广播，前端收到后节流（默认4秒）重新拉取看板数据
+const DASHBOARD_REFRESH_THROTTLE = 4000
+let dashboardRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let lastDashboardRefreshAt = 0
+let unsubscribeDashboardBroadcast: (() => void) | null = null
+
+const handleDashboardDataChanged = () => {
+  const now = Date.now()
+  const elapsed = now - lastDashboardRefreshAt
+  // 距离上次刷新已超过节流窗口，立即刷新
+  if (elapsed >= DASHBOARD_REFRESH_THROTTLE) {
+    lastDashboardRefreshAt = now
+    loadDashboardData()
+    return
+  }
+  // 节流窗口内：合并多次广播，仅在窗口结束时刷新一次
+  if (dashboardRefreshTimer) return
+  dashboardRefreshTimer = setTimeout(() => {
+    dashboardRefreshTimer = null
+    lastDashboardRefreshAt = Date.now()
+    loadDashboardData()
+  }, DASHBOARD_REFRESH_THROTTLE - elapsed)
+}
+
 onMounted(async () => {
   // 🔥 优化：先显示页面，再加载数据，提升用户体验
   const startTime = Date.now()
@@ -2179,6 +2205,9 @@ onMounted(async () => {
   // 🔥 关键修复：监听业绩数据更新事件（来自分享页面的取消/创建/编辑操作）
   window.addEventListener('performanceDataUpdate', handlePerformanceDataUpdate)
   window.addEventListener('dataSync', handlePerformanceDataUpdate)
+
+  // 🔥 方案A：订阅后端看板数据变更广播（订单/客户/业绩/物流写操作实时刷新看板）
+  unsubscribeDashboardBroadcast = webSocketService.on('dashboard:data_changed', handleDashboardDataChanged)
 })
 
 onUnmounted(() => {
@@ -2189,6 +2218,16 @@ onUnmounted(() => {
   // 🔥 清理全局事件监听
   window.removeEventListener('performanceDataUpdate', handlePerformanceDataUpdate)
   window.removeEventListener('dataSync', handlePerformanceDataUpdate)
+
+  // 🔥 方案A：取消看板数据变更订阅并清理节流定时器
+  if (unsubscribeDashboardBroadcast) {
+    unsubscribeDashboardBroadcast()
+    unsubscribeDashboardBroadcast = null
+  }
+  if (dashboardRefreshTimer) {
+    clearTimeout(dashboardRefreshTimer)
+    dashboardRefreshTimer = null
+  }
 })
 </script>
 

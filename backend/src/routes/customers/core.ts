@@ -11,6 +11,7 @@ import { AppDataSource } from '../../config/database';
 import { TenantContextManager } from '../../utils/tenantContext';
 import { createCustomerLog } from '../../utils/customerLog';
 import { log } from '../../config/logger';
+import { notifyDashboardDataChanged } from '../../utils/dashboardBroadcast';
 
 // 从地址字段提取最新地址（支持JSON数组格式和纯文本格式）
 function getLatestAddress(address: string | null | undefined): string {
@@ -712,6 +713,9 @@ router.post('/batch-import', async (req: Request, res: Response) => {
 
     log.info(`[批量导入] 完成: 成功${successCount}, 重复${duplicateCount}, 失败${errorCount}`);
 
+    // 🔥 广播看板数据变更（客户批量导入）
+    notifyDashboardDataChanged('customers', batchTenantId);
+
     res.json({
       success: true,
       code: 200,
@@ -1032,6 +1036,24 @@ router.post('/', async (req: Request, res: Response) => {
       log.warn('[创建客户] 地区限制检查失败（放行）:', e.message);
     }
 
+    // 🔒 年龄/性别限制检查：限制年龄/性别客户创建客户资料（仅此入口拦截，与订单侧配置独立）
+    try {
+      const { checkCustomerAgeGenderRestriction } = await import('../../utils/ageGenderRestriction');
+      const ageGenderCheck = await checkCustomerAgeGenderRestriction(currentTenantId, { age, gender });
+      if (!ageGenderCheck.allowed) {
+        log.warn(`⚠️ [创建客户] 年龄/性别限制: ${ageGenderCheck.message}`);
+        return res.status(400).json({
+          success: false,
+          code: 400,
+          message: ageGenderCheck.message,
+          limitType: ageGenderCheck.limitType
+        });
+      }
+    } catch (e: any) {
+      // 检查异常放行，不阻塞正常业务
+      log.warn('[创建客户] 年龄/性别限制检查失败（放行）:', e.message);
+    }
+
     // 🔥 修复：优先使用当前登录用户的ID作为创建人和销售人员
     const finalCreatedBy = currentUserId || createdBy || salesPersonId || 'admin';
     const finalSalesPersonId = salesPersonId || currentUserId || null;
@@ -1204,6 +1226,9 @@ router.post('/', async (req: Request, res: Response) => {
       operatorName: currentUser?.realName || currentUser?.name || '系统',
       tenantId: currentTenantId
     });
+
+    // 🔥 广播看板数据变更（客户创建）
+    notifyDashboardDataChanged('customers', currentTenantId);
 
     res.status(201).json({
       success: true,
@@ -1384,6 +1409,9 @@ router.put('/:id', async (req: Request, res: Response) => {
       finalScore: (updatedCustomer as any).finalScore || 0
     };
 
+    // 🔥 广播看板数据变更（客户更新）
+    notifyDashboardDataChanged('customers', (req as any).tenantId || TenantContextManager.getTenantId());
+
     res.json({
       success: true,
       code: 200,
@@ -1417,6 +1445,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 
     await customerRepository.remove(customer);
+
+    // 🔥 广播看板数据变更（客户删除）
+    notifyDashboardDataChanged('customers', (req as any).tenantId || TenantContextManager.getTenantId());
 
     res.json({
       success: true,

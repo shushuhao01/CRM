@@ -583,6 +583,14 @@
                 <label>定金</label>
                 <input v-model.number="qoForm.depositAmount" class="preview-input" type="number" step="0.01" placeholder="0.00" @input="calcQoCollect()" />
               </div>
+              <div class="form-group">
+                <label>邮费</label>
+                <input v-model.number="qoForm.shippingFee" class="preview-input" type="number" step="0.01" placeholder="0.00" @input="calcQoCollect()" />
+              </div>
+              <div class="qo-amount-row" v-if="Number(qoForm.shippingFee || 0) > 0">
+                <span class="qo-amount-label">应付总额</span>
+                <span class="qo-amount-val" style="color:#409eff">¥{{ qoPayableAmount.toFixed(2) }}</span>
+              </div>
               <div class="qo-amount-row">
                 <span class="qo-amount-label">代收金额</span>
                 <span class="qo-amount-val" style="color:#f56c6c;font-weight:700">¥{{ qoCollectAmount.toFixed(2) }}</span>
@@ -718,6 +726,14 @@
               <div class="qo-total-bar" v-if="qoForm.depositAmount">
                 <span>定金</span>
                 <span style="color:#67c23a">-¥{{ Number(qoForm.depositAmount || 0).toFixed(2) }}</span>
+              </div>
+              <div class="qo-total-bar" v-if="Number(qoForm.shippingFee || 0) > 0">
+                <span>邮费</span>
+                <span style="color:#409eff">+¥{{ Number(qoForm.shippingFee || 0).toFixed(2) }}</span>
+              </div>
+              <div class="qo-total-bar" v-if="Number(qoForm.shippingFee || 0) > 0">
+                <span>应付总额</span>
+                <span style="color:#409eff;font-weight:600">¥{{ qoPayableAmount.toFixed(2) }}</span>
               </div>
               <div class="qo-total-bar">
                 <span>代收金额</span>
@@ -1743,6 +1759,7 @@ const qoForm = ref<{
   products: { id: any; name: string; price: number; quantity: number; stock: number; image?: string }[]
   totalAmount: number
   depositAmount: number
+  shippingFee: number
   depositScreenshots: string[]
   paymentMethod: string
   paymentMethodOther: string
@@ -1762,6 +1779,7 @@ const qoForm = ref<{
   products: [],
   totalAmount: 0,
   depositAmount: 0,
+  shippingFee: 0,
   depositScreenshots: [],
   paymentMethod: '',
   paymentMethodOther: '',
@@ -1973,7 +1991,8 @@ const calcQoTotal = () => {
 }
 
 const qoSubtotal = computed(() => qoForm.value.products.reduce((sum, p) => sum + p.price * p.quantity, 0))
-const qoCollectAmount = computed(() => Math.max(Number(qoForm.value.totalAmount || 0) - Number(qoForm.value.depositAmount || 0), 0))
+const qoCollectAmount = computed(() => Math.max(Number(qoForm.value.totalAmount || 0) + Number(qoForm.value.shippingFee || 0) - Number(qoForm.value.depositAmount || 0), 0))
+const qoPayableAmount = computed(() => Number(qoForm.value.totalAmount || 0) + Number(qoForm.value.shippingFee || 0))
 
 const calcQoCollect = () => {
   // Just trigger reactivity
@@ -2196,6 +2215,7 @@ const submitQuickOrder = async () => {
       })),
       totalAmount: Number(qoForm.value.totalAmount) || qoTotalAmount.value,
       depositAmount: Number(qoForm.value.depositAmount) || 0,
+      shippingFee: Number(qoForm.value.shippingFee) || 0,
       depositScreenshot: qoForm.value.depositScreenshots[0] || '',
       remark: qoForm.value.remark ? `[企微快捷下单] ${qoForm.value.remark}` : '[企微快捷下单]',
       customFields: Object.keys(qoForm.value.customFields).length ? qoForm.value.customFields : undefined,
@@ -2218,7 +2238,7 @@ const resetQuickOrder = () => {
   qoForm.value = {
     customerId: '', customerName: '', customerPhone: '',
     receiverName: '', receiverPhone: '', receiverAddress: '',
-    products: [], totalAmount: 0, depositAmount: 0, depositScreenshots: [],
+    products: [], totalAmount: 0, depositAmount: 0, shippingFee: 0, depositScreenshots: [],
     paymentMethod: '', paymentMethodOther: '', serviceWechat: '',
     orderSource: '', expressCompany: '', markType: 'normal',
     remark: '', customFields: {}

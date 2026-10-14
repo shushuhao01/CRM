@@ -18,84 +18,70 @@
 
     <!-- 数据概览卡片 -->
     <div class="metrics-grid">
-      <!-- 第一行 -->
-      <div class="metrics-row">
-        <div class="metric-card">
-          <div class="metric-icon total-orders">
-            <el-icon><Box /></el-icon>
-          </div>
-          <div class="metric-content">
-            <div class="metric-value">{{ overviewData.totalOrders }}</div>
-            <div class="metric-label">待发货订单</div>
-          </div>
+      <div class="metric-card">
+        <div class="metric-icon total-orders">
+          <el-icon><Box /></el-icon>
         </div>
-
-        <div class="metric-card">
-          <div class="metric-icon total-amount">
-            <el-icon><Money /></el-icon>
-          </div>
-          <div class="metric-content">
-            <div class="metric-value">¥{{ formatNumber(overviewData.totalAmount) }}</div>
-            <div class="metric-label">待发货金额</div>
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-icon shipped-today">
-            <el-icon><Van /></el-icon>
-          </div>
-          <div class="metric-content">
-            <div class="metric-value">{{ overviewData.shippedToday }}</div>
-            <div class="metric-label">今日发货</div>
-          </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ overviewData.totalOrders }}</div>
+          <div class="metric-label">待发货订单</div>
         </div>
       </div>
 
-      <!-- 第二行 -->
-      <div class="metrics-row">
-        <div class="metric-card">
-          <div class="metric-icon urgent-orders">
-            <el-icon><Warning /></el-icon>
-          </div>
-          <div class="metric-content">
-            <div class="metric-value">{{ overviewData.urgentOrders }}</div>
-            <div class="metric-label">紧急订单</div>
-          </div>
+      <div class="metric-card">
+        <div class="metric-icon total-amount">
+          <el-icon><Money /></el-icon>
         </div>
-
-        <div class="metric-card">
-          <div class="metric-icon cod-orders">
-            <el-icon><CreditCard /></el-icon>
-          </div>
-          <div class="metric-content">
-            <div class="metric-value">{{ overviewData.timeoutOrders }}</div>
-            <div class="metric-label">超时发货订单</div>
-          </div>
+        <div class="metric-content">
+          <div class="metric-value">¥{{ formatNumber(overviewData.totalAmount) }}</div>
+          <div class="metric-label">待发货金额</div>
         </div>
+      </div>
 
-        <div class="metric-card">
-          <div class="metric-icon cod-amount">
-            <el-icon><Coin /></el-icon>
-          </div>
-          <div class="metric-content">
-            <div class="metric-value">¥{{ formatNumber(overviewData.timeoutAmount) }}</div>
-            <div class="metric-label">超时订单金额</div>
-          </div>
+      <div class="metric-card">
+        <div class="metric-icon shipped-today">
+          <el-icon><Van /></el-icon>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ overviewData.shippedToday }}</div>
+          <div class="metric-label">今日发货</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon timeout-orders">
+          <el-icon><CreditCard /></el-icon>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ overviewData.timeoutOrders }}</div>
+          <div class="metric-label">超时发货订单</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon timeout-amount">
+          <el-icon><Coin /></el-icon>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">¥{{ formatNumber(overviewData.timeoutAmount) }}</div>
+          <div class="metric-label">超时订单金额</div>
         </div>
       </div>
     </div>
 
     <!-- 快速筛选 -->
     <div class="quick-filters">
-      <el-button
-        v-for="filter in quickFilters"
-        :key="filter.value"
-        :type="selectedQuickFilter === filter.value ? 'primary' : ''"
-        @click="handleQuickFilter(filter.value)"
-        class="filter-btn"
-      >
-        {{ filter.label }}
-      </el-button>
+      <div class="quick-btn-group">
+        <button
+          v-for="filter in quickFilters"
+          :key="filter.value"
+          class="quick-btn"
+          :class="{ active: selectedQuickFilter === filter.value }"
+          @click="handleQuickFilter(filter.value)"
+        >
+          {{ filter.label }}
+        </button>
+      </div>
     </div>
 
     <!-- 筛选器 -->
@@ -104,6 +90,7 @@
         <el-date-picker
           v-model="dateRange"
           type="daterange"
+          unlink-panels
           range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
@@ -332,6 +319,21 @@
       <!-- 代收款金额列 -->
       <template #codAmount="{ row }">
         <span class="amount highlight">¥{{ formatNumber(row.codAmount) }}</span>
+      </template>
+
+      <!-- 邮费列（默认隐藏） -->
+      <template #column-shippingFee="{ row }">
+        <el-tooltip content="邮费为独立字段，不计入订单总额" placement="top">
+          <span v-if="row.shippingFee" class="amount">¥{{ formatNumber(row.shippingFee) }}</span>
+          <span v-else class="no-data">-</span>
+        </el-tooltip>
+      </template>
+
+      <!-- 应付总额列（默认隐藏） -->
+      <template #column-payableAmount="{ row }">
+        <el-tooltip content="应付总额 = 订单总额 + 邮费" placement="top">
+          <span class="amount">¥{{ formatNumber((row.totalAmount || 0) + (row.shippingFee || 0)) }}</span>
+        </el-tooltip>
       </template>
 
       <!-- 订单来源列 -->
@@ -655,6 +657,7 @@
             <el-date-picker
               v-model="dateRange"
               type="daterange"
+              unlink-panels
               range-separator="至"
               start-placeholder="开始日期"
               end-placeholder="结束日期"
@@ -766,6 +769,21 @@
             <el-table-column prop="totalAmount" label="订单金额" width="100" align="center">
               <template #default="{ row }">
                 <span class="amount">¥{{ formatNumber(row.totalAmount) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="shippingFee" label="邮费" width="90" align="center">
+              <template #default="{ row }">
+                <el-tooltip content="邮费为独立字段，不计入订单总额" placement="top">
+                  <span v-if="row.shippingFee" class="amount">¥{{ formatNumber(row.shippingFee) }}</span>
+                  <span v-else class="no-data">-</span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+            <el-table-column prop="payableAmount" label="应付总额" width="100" align="center">
+              <template #default="{ row }">
+                <el-tooltip content="应付总额 = 订单总额 + 邮费" placement="top">
+                  <span class="amount">¥{{ formatNumber((row.totalAmount || 0) + (row.shippingFee || 0)) }}</span>
+                </el-tooltip>
               </template>
             </el-table-column>
             <el-table-column prop="codAmount" label="代收款" width="100" align="center">
@@ -964,7 +982,7 @@ import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Box, Money, Van, Warning, CreditCard, Coin,
+  Box, Money, Van, CreditCard, Coin,
   Search, Download, View, Printer, ArrowDown, Back, Close, Document,
   Edit, Check, Delete, FullScreen, CopyDocument, Refresh, Setting, Postcard, QuestionFilled,
   MagicStick
@@ -1004,21 +1022,19 @@ const overviewData = reactive({
   totalOrders: 0,
   totalAmount: 0,
   shippedToday: 0,
-  urgentOrders: 0,
   timeoutOrders: 0,
   timeoutAmount: 0
 })
 
 // 快速筛选
 const quickFilters = [
+  { label: '今日', value: 'today' },
+  { label: '昨日', value: 'yesterday' },
+  { label: '本周', value: 'thisWeek' },
+  { label: '本月', value: 'thisMonth' },
+  { label: '上月', value: 'lastMonth' },
+  { label: '今年', value: 'thisYear' },
   { label: '全部', value: 'all' },
-  { label: '今日订单', value: 'today' },
-  { label: '昨日订单', value: 'yesterday' },
-  { label: '本周订单', value: 'thisWeek' },
-  { label: '本月订单', value: 'thisMonth' },
-  { label: '上月订单', value: 'lastMonth' },
-  { label: '今年订单', value: 'thisYear' },
-  { label: '紧急订单', value: 'urgent' },
   { label: '超时订单', value: 'timeout' }
 ]
 
@@ -1223,6 +1239,20 @@ const baseTableColumns = [
     width: 90,
     align: 'center',
     visible: true
+  },
+  {
+    prop: 'shippingFee',
+    label: '邮费',
+    width: 90,
+    align: 'center',
+    visible: false
+  },
+  {
+    prop: 'payableAmount',
+    label: '应付总额',
+    width: 100,
+    align: 'center',
+    visible: false
   },
   {
     prop: 'customerAge',
@@ -1496,7 +1526,6 @@ const getOrderStatusText = (status: string) => {
 // 获取标记类型
 const getMarkType = (markType: string) => {
   const typeMap = {
-    'urgent': 'danger',
     'normal': 'success',
     'cod': 'warning',
     'return': 'info'
@@ -1507,7 +1536,6 @@ const getMarkType = (markType: string) => {
 // 获取标记文本
 const getMarkText = (markType: string) => {
   const textMap = {
-    'urgent': '紧急',
     'normal': '正常',
     'cod': '代收款',
     'return': '退回'
@@ -1517,8 +1545,7 @@ const getMarkText = (markType: string) => {
 
 // 获取行类名
 const getRowClassName = ({ row }: { row: any }) => {
-  if (row.status === 'urgent') return 'urgent-row'
-  if (row.status === 'cod') return 'cod-row'
+  if (row.markType === 'cod') return 'cod-row'
   return ''
 }
 
@@ -1730,7 +1757,7 @@ const loadOrderList = async () => {
       }).join('，') || '-'
       const totalQuantity = products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) || 0
       const deposit = order.depositAmount || 0
-      const codAmount = order.collectAmount || (order.totalAmount || 0) - (order.depositAmount || 0)
+      const codAmount = order.collectAmount || (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)
 
       // 统一字段映射
       return {
@@ -1815,8 +1842,6 @@ const updateOverviewData = (currentPageOrders: any[] = []) => {
   overviewData.shippedToday = orders.filter((order: any) =>
     order.shipTime && order.shipTime.startsWith(today)
   ).length
-
-  overviewData.urgentOrders = orders.filter((order: any) => order.status === 'urgent').length
 
   // 🔥 超时发货订单：待发货超过24小时的订单
   const now = new Date().getTime()
@@ -2038,7 +2063,7 @@ const formatOrderForDialog = (order: any) => {
   const productsText = products.map(p => `${p.name} × ${p.quantity}`).join('，') || ''
   const totalQuantity = products.reduce((sum, p) => sum + (p.quantity || 0), 0) || 0
   const deposit = order.depositAmount || 0
-  const codAmount = order.collectAmount || (order.totalAmount || 0) - (order.depositAmount || 0)
+  const codAmount = order.collectAmount || (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)
 
   return {
     ...order,
@@ -2175,7 +2200,9 @@ const mapShippingOrderToExport = (order: any, logsMap: Record<string, any>): Exp
     : 0),
   totalAmount: order.totalAmount || 0,
   depositAmount: order.depositAmount || order.deposit || 0,
-  codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+  shippingFee: order.shippingFee || 0,
+  payableAmount: (order.totalAmount || 0) + (order.shippingFee || 0),
+  codAmount: order.codAmount || ((order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)),
   customerGender: order.customerGender || '',
   customerAge: order.customerAge || '',
   customerHeight: order.customerHeight || '',
@@ -2370,7 +2397,9 @@ const handleCommand = async ({ action, row }: { action: string, row: any }) => {
             : 0),
           totalAmount: row.totalAmount || 0,
           depositAmount: row.depositAmount || row.deposit || 0,
-          codAmount: row.codAmount || (row.totalAmount || 0) - (row.depositAmount || 0),
+          shippingFee: row.shippingFee || 0,
+          payableAmount: (row.totalAmount || 0) + (row.shippingFee || 0),
+          codAmount: row.codAmount || ((row.totalAmount || 0) + (row.shippingFee || 0) - (row.depositAmount || 0)),
           customerGender: row.customerGender || '',
           customerAge: row.customerAge || '',
           customerHeight: row.customerHeight || '',
@@ -3253,20 +3282,17 @@ const confirmVirtualDelivery = async () => {
 
 /* 数据概览卡片样式 */
 .metrics-grid {
-  margin-bottom: 20px;
-}
-
-.metrics-row {
   display: flex;
-  gap: 20px;
+  gap: 12px;
   margin-bottom: 20px;
 }
 
 .metric-card {
   flex: 1;
+  min-width: 0;
   background: white;
   border-radius: 8px;
-  padding: 20px;
+  padding: 16px 14px;
   display: flex;
   align-items: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -3278,49 +3304,84 @@ const confirmVirtualDelivery = async () => {
 }
 
 .metric-icon {
-  width: 50px;
-  height: 50px;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 15px;
-  font-size: 24px;
+  margin-right: 10px;
+  font-size: 20px;
   color: white;
 }
 
 .total-orders { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
 .total-amount { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
 .shipped-today { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-.urgent-orders { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
-.cod-orders { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); }
+.timeout-orders { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+.timeout-amount { background: linear-gradient(135deg, #ff9a44 0%, #fc6076 100%); }
+/* 保留给表格「代收款」列使用，勿删 */
 .cod-amount { background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); }
 
 .metric-content {
   flex: 1;
+  min-width: 0;
 }
 
 .metric-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   color: #303133;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .metric-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #909399;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 快速筛选样式 */
 .quick-filters {
-  margin-bottom: 20px;
-  display: flex;
-  gap: 10px;
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
 }
 
-.filter-btn {
-  border-radius: 20px;
+.quick-btn-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.quick-btn {
+  padding: 8px 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  color: #606266;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-btn:hover {
+  color: #409eff;
+  border-color: #c6e2ff;
+  background: #ecf5ff;
+}
+
+.quick-btn.active {
+  color: #fff;
+  background: #409eff;
+  border-color: #409eff;
 }
 
 /* 筛选器样式 */
@@ -3455,10 +3516,6 @@ const confirmVirtualDelivery = async () => {
 }
 
 /* 行样式 */
-:deep(.urgent-row) {
-  background-color: #fef0f0;
-}
-
 :deep(.cod-row) {
   background-color: #fdf6ec;
 }

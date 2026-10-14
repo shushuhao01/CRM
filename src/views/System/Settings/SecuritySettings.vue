@@ -86,13 +86,30 @@
       </el-form-item>
 
       <el-form-item label="会话超时时间" prop="sessionTimeout">
-        <el-input-number
-          v-model="securityForm.sessionTimeout"
-          :min="0"
-          :max="1440"
-          placeholder="会话超时时间"
-        />
-        <span class="form-tip">分钟。登录满该时长后会话过期，需重新登录（用于在线席位模式下释放席位）；0表示不限制</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <el-input-number
+            v-model="securityForm.sessionTimeout"
+            :min="0"
+            :max="10080"
+            :precision="0"
+            :step="1"
+            :disabled="!!sessionTimeoutPresetDays"
+            placeholder="会话超时时间"
+          />
+          <el-select
+            v-model="sessionTimeoutPresetDays"
+            clearable
+            placeholder="快速选择"
+            style="width: 130px"
+            @change="handleSessionTimeoutPresetChange"
+          >
+            <el-option :value="1" label="1 天" />
+            <el-option :value="3" label="3 天" />
+            <el-option :value="5" label="5 天" />
+            <el-option :value="7" label="7 天" />
+          </el-select>
+        </div>
+        <span class="form-tip">分钟。自登录起超过该时长即过期，需重新登录；0 表示不限制，最长 7 天</span>
       </el-form-item>
 
       <el-form-item label="强制HTTPS" prop="forceHttps">
@@ -128,6 +145,15 @@ const configStore = useConfigStore()
 
 const securityLoading = ref(false)
 const securityFormRef = ref()
+
+// 会话超时快捷天数选择：选中后分钟输入框锁定，清空后恢复手动输入
+const sessionTimeoutPresetDays = ref<number | null>(null)
+
+const handleSessionTimeoutPresetChange = (days: number | null) => {
+  if (days) {
+    securityForm.value.sessionTimeout = days * 24 * 60
+  }
+}
 
 const securityForm = computed(() => configStore.securityConfig)
 

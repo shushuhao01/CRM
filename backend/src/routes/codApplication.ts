@@ -149,7 +149,7 @@ router.post('/create', authenticateToken, async (req: Request, res: Response) =>
     }
 
     // 计算原代收金额（用于显示参考）
-    const originalCodAmount = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+    const originalCodAmount = (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0);
 
     // 🔥 获取当前代收金额（如果改过代收，使用修改后的金额作为上限）
     const currentCodAmount = order.codAmount !== undefined && order.codAmount !== null

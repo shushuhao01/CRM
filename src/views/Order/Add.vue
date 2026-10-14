@@ -450,11 +450,24 @@
               <el-input-number
                 v-model="orderForm.depositAmount"
                 :min="0"
-                :max="orderForm.totalAmount || 0"
+                :max="payableAmount"
                 :precision="2"
                 placeholder="定金金额"
                 class="field-input"
                 @change="calculateCollectAmount"
+              />
+            </div>
+            <div class="amount-field">
+              <span class="field-label">邮费</span>
+              <el-input-number
+                v-model="orderForm.shippingFee"
+                :min="0"
+                :precision="0"
+                :step="1"
+                placeholder="客户自付邮费"
+                class="field-input"
+                @change="handleShippingFeeChange"
+                @blur="handleShippingFeeBlur"
               />
             </div>
             <div class="amount-field">
@@ -487,6 +500,10 @@
           <!-- 第二行：代收金额、优惠金额、支付方式备注、定金截图 -->
           <div class="amount-row">
             <div class="amount-field">
+              <span class="field-label">应付总额</span>
+              <span class="field-amount payable">¥{{ payableAmount.toFixed(2) }}</span>
+            </div>
+            <div class="amount-field">
               <span class="field-label">代收金额</span>
               <span class="field-amount collect">¥{{ collectAmount.toFixed(2) }}</span>
             </div>
@@ -500,7 +517,7 @@
               </div>
             </div>
             <div class="amount-field screenshot-field">
-              <span class="field-label">定金截图</span>
+              <span class="field-label">定金截图 <span v-if="depositScreenshotRequired" class="required-star">*</span></span>
               <div class="screenshot-buttons">
                 <el-button type="primary" size="small" :icon="Upload" @click="triggerUpload">
                   上传截图
@@ -713,6 +730,14 @@
               <div class="amount-item highlight deposit-amount">
                 <span class="label">定金</span>
                 <span class="value">¥{{ (orderForm.depositAmount || 0).toFixed(2) }}</span>
+              </div>
+              <div class="amount-item highlight shipping-fee">
+                <span class="label">邮费</span>
+                <span class="value">¥{{ (orderForm.shippingFee || 0).toFixed(2) }}</span>
+              </div>
+              <div class="amount-item highlight payable-amount">
+                <span class="label">应付总额</span>
+                <span class="value">¥{{ payableAmount.toFixed(2) }}</span>
               </div>
               <div class="amount-item highlight collect-amount">
                 <span class="label">代收金额</span>
@@ -967,6 +992,7 @@ interface Customer {
   otherPhones?: string[]  // 其他手机号
   address: string
   age: number
+  gender?: string
   level: 'normal' | 'vip' | 'premium'
   salesPersonId: string
   orderCount: number
@@ -993,6 +1019,7 @@ interface OrderForm {
   discount: number
   totalAmount: number
   depositAmount: number
+  shippingFee: number
   depositScreenshot: string
   paymentMethod: string
   paymentMethodOther: string
@@ -1212,6 +1239,7 @@ const orderForm = reactive<OrderForm>({
   discount: 0,
   totalAmount: 0,
   depositAmount: 0,
+  shippingFee: 0,
   depositScreenshot: '',
   paymentMethod: '',
   paymentMethodOther: '',
@@ -1274,6 +1302,37 @@ const formRules = computed(() => {
 // 多张定金截图
 const depositScreenshots = ref<string[]>([])
 
+// 下单提交限制配置（邮费上限 / 定金截图必填，来自 系统设置-订单配置）
+const orderSubmitConfig = reactive({
+  shippingFeeLimitEnabled: false,
+  maxShippingFee: 0,
+  exemptOverseas: false,
+  depositScreenshotRequired: false
+})
+
+// 定金截图是否必填（用于字段星标与提交校验）
+const depositScreenshotRequired = computed(() => orderSubmitConfig.depositScreenshotRequired)
+
+// 加载下单提交限制配置
+const loadOrderSubmitRestriction = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/order-submit-restrictions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success && result.data) {
+      const d = result.data
+      orderSubmitConfig.shippingFeeLimitEnabled = !!d.shippingFeeLimitEnabled
+      orderSubmitConfig.maxShippingFee = Number(d.maxShippingFee) || 0
+      orderSubmitConfig.exemptOverseas = !!d.exemptOverseas
+      orderSubmitConfig.depositScreenshotRequired = !!d.depositScreenshotRequired
+    }
+  } catch (error) {
+    console.warn('[新增订单] 加载下单提交限制配置失败:', error)
+  }
+}
+
 // 控制悬停时显示放大图标
 const showZoomIcon = ref(-1)
 
@@ -1330,8 +1389,13 @@ const subtotal = computed(() => {
   }, 0)
 })
 
+// 应付总额 = 订单总额 + 邮费
+const payableAmount = computed(() => {
+  return (orderForm.totalAmount || 0) + (orderForm.shippingFee || 0)
+})
+
 const collectAmount = computed(() => {
-  return (orderForm.totalAmount || 0) - (orderForm.depositAmount || 0)
+  return payableAmount.value - (orderForm.depositAmount || 0)
 })
 
 // 优惠金额 = 商品小计 - 订单总额
@@ -1727,6 +1791,42 @@ const calculateCollectAmount = () => {
   // 代收金额计算的逻辑已在计算属性中实现
 }
 
+// 邮费超限自动调整为最大金额（境外地址可豁免）；命中返回 true
+const clampShippingFeeToLimit = (): boolean => {
+  if (!orderSubmitConfig.shippingFeeLimitEnabled || orderSubmitConfig.maxShippingFee <= 0) {
+    return false
+  }
+  const exempt = orderSubmitConfig.exemptOverseas && !!selectedCustomer.value?.overseasAddress
+  if (exempt) {
+    return false
+  }
+  const fee = Number(orderForm.shippingFee) || 0
+  if (fee > orderSubmitConfig.maxShippingFee) {
+    orderForm.shippingFee = orderSubmitConfig.maxShippingFee
+    ElMessage.warning(`邮费不能超过 ¥${orderSubmitConfig.maxShippingFee}，已自动调整为最大金额`)
+    return true
+  }
+  return false
+}
+
+// 处理邮费变化：邮费提高后定金上限（应付总额）随之提高，无需回弹；但若定金超过应付总额则回弹
+const handleShippingFeeChange = (value: number | null) => {
+  if (value === null || value === undefined) {
+    return
+  }
+  // 🔥 邮费超限自动调整为最大金额（与订单总额超限自动调整逻辑一致）
+  clampShippingFeeToLimit()
+  if (orderForm.depositAmount > payableAmount.value) {
+    orderForm.depositAmount = payableAmount.value
+    ElMessage.info('定金已自动调整为应付总额')
+  }
+}
+
+// 邮费失焦即时校验：命中邮费最大金额限制时自动调整为最大金额（境外地址可豁免）
+const handleShippingFeeBlur = () => {
+  clampShippingFeeToLimit()
+}
+
 // 处理订单总额变化
 const handleTotalAmountChange = (value: number | null) => {
   // 如果value为null或undefined，不处理
@@ -1781,10 +1881,10 @@ const handleTotalAmountChange = (value: number | null) => {
     return
   }
 
-  // 如果定金大于新的订单总额，自动调整定金
-  if (orderForm.depositAmount > value) {
-    orderForm.depositAmount = value
-    ElMessage.info('定金已自动调整为订单总额')
+  // 如果定金大于新的应付总额，自动调整定金
+  if (orderForm.depositAmount > (value + (orderForm.shippingFee || 0))) {
+    orderForm.depositAmount = value + (orderForm.shippingFee || 0)
+    ElMessage.info('定金已自动调整为应付总额')
   }
 
   // 当手动修改订单总额时，重新计算代收金额
@@ -2009,6 +2109,22 @@ const handleSaveOrder = async () => {
       }
     }
 
+    // 🔥 邮费最大金额限制校验（系统设置-订单配置，默认不开启；境外地址可豁免）
+    if (orderSubmitConfig.shippingFeeLimitEnabled && orderSubmitConfig.maxShippingFee > 0) {
+      const exempt = orderSubmitConfig.exemptOverseas && !!selectedCustomer.value?.overseasAddress
+      const fee = Number(orderForm.shippingFee) || 0
+      if (!exempt && fee > orderSubmitConfig.maxShippingFee) {
+        ElMessage.error(`邮费 ¥${fee.toFixed(2)} 超出允许的最大邮费 ¥${orderSubmitConfig.maxShippingFee.toFixed(2)}，请调整后再提交`)
+        return
+      }
+    }
+
+    // 🔥 定金截图必填校验（系统设置-订单配置，默认不开启；仅当填写了定金金额时才要求截图）
+    if (orderSubmitConfig.depositScreenshotRequired && (orderForm.depositAmount || 0) > 0 && depositScreenshots.value.length === 0) {
+      ElMessage.warning('该订单要求必须上传定金截图，请上传后再提交')
+      return
+    }
+
     confirmDialogVisible.value = true
   } catch (error) {
     ElMessage.error('请完善订单信息')
@@ -2055,7 +2171,8 @@ const handleSubmitOrder = async () => {
     const subtotal = orderForm.products.reduce((sum, product) => sum + (product.price * product.quantity || 0), 0)
     // 使用orderForm.totalAmount(用户可能手动修改过)
     const totalAmount = orderForm.totalAmount || (subtotal - (orderForm.discount || 0))
-    const collectAmount = totalAmount - (orderForm.depositAmount || 0)
+    const shippingFee = orderForm.shippingFee || 0
+    const collectAmount = totalAmount + shippingFee - (orderForm.depositAmount || 0)
 
     // 🔥 调试：打印当前用户信息，确保使用正确的销售人员
     console.log('📋 [新增订单] 当前用户信息:', {
@@ -2090,6 +2207,7 @@ const handleSubmitOrder = async () => {
       totalAmount: totalAmount, // 【批次204修复】使用用户修改后的金额
       collectAmount: collectAmount,
       depositAmount: orderForm.depositAmount,
+      shippingFee: shippingFee,
       depositScreenshot: orderForm.depositScreenshot,
       depositScreenshots: depositScreenshots.value.length > 0 ? depositScreenshots.value : undefined,
       receiverName: orderForm.receiverName,
@@ -2291,6 +2409,9 @@ onMounted(async () => {
 
   // 加载支付方式配置
   loadPaymentMethods()
+
+  // 加载下单提交限制配置（邮费上限 / 定金截图必填）
+  loadOrderSubmitRestriction()
 
   // 【修复】始终从API获取最新商品数据，确保所有用户看到相同的商品列表
   // 不再依赖本地缓存，避免不同用户看到不同商品的问题
@@ -2959,6 +3080,10 @@ onMounted(async () => {
 
 .field-amount.collect {
   color: #7c3aed;
+}
+
+.field-amount.payable {
+  color: #2563eb;
 }
 
 .field-amount.discount {

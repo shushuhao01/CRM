@@ -245,7 +245,7 @@
               <el-option label="已关闭" value="closed" />
               <el-option label="超时" value="timeout" />
             </el-select>
-            <el-date-picker v-model="sessionFilter.dateRange" type="daterange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD" style="width:260px" @change="fetchSessions" />
+            <el-date-picker v-model="sessionFilter.dateRange" type="daterange" unlink-panels range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD" style="width:260px" @change="fetchSessions" />
             <el-input v-model="sessionFilter.keyword" placeholder="搜索客户/客服" clearable style="width: 170px" @keyup.enter="fetchSessions" @clear="fetchSessions">
               <template #prefix><el-icon><Search /></el-icon></template>
             </el-input>
@@ -335,7 +335,7 @@
                 {{ btn.label }}
               </el-button>
             </div>
-            <el-date-picker v-model="statsDateRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" value-format="YYYY-MM-DD" style="width: 260px" @change="fetchStats" />
+            <el-date-picker v-model="statsDateRange" type="daterange" unlink-panels range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" value-format="YYYY-MM-DD" style="width: 260px" @change="fetchStats" />
             <el-select v-model="statsKfFilter" placeholder="全部客服账号" clearable style="width:160px" @change="fetchStats">
               <el-option v-for="a in displayAccountOptions" :key="a.openKfId" :label="a.name" :value="a.openKfId" />
             </el-select>

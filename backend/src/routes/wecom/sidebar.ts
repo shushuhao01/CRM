@@ -2728,7 +2728,7 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
     const userId = sidebarUser?.crmUserId || sidebarUser?.userId;
     if (!tenantId) return res.status(400).json({ success: false, message: '租户信息缺失' });
 
-    const { customerId, products, totalAmount, depositAmount, paymentMethod, remark, receiverName, receiverPhone, receiverAddress } = req.body;
+    const { customerId, products, totalAmount, depositAmount, shippingFee, paymentMethod, remark, receiverName, receiverPhone, receiverAddress } = req.body;
     if (!customerId || !products?.length) {
       return res.status(400).json({ success: false, message: '客户和商品不能为空' });
     }
@@ -2823,6 +2823,24 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
           log.warn('[Sidebar] 部门地区限制检查失败（放行）:', e.message);
         }
       }
+
+      // 4) 下单提交限制（邮费最大金额限制 + 定金截图必填；与主应用 POST /orders 一致）
+      try {
+        const { checkOrderSubmitRestrictions } = await import('../../utils/orderSubmitRestriction');
+        const depositShots = req.body.depositScreenshots;
+        const osrCheck = await checkOrderSubmitRestrictions(tenantId, {
+          shippingFee: Number(shippingFee) || 0,
+          isOverseas: !!customerRecord?.overseasAddress,
+          depositAmount: Number(depositAmount) || 0,
+          hasDepositScreenshot: Array.isArray(depositShots) && depositShots.length > 0,
+        });
+        if (!osrCheck.allowed) {
+          log.warn(`⚠️ [Sidebar] 下单提交限制: ${osrCheck.message}`);
+          return res.status(400).json({ success: false, message: osrCheck.message, limitType: osrCheck.limitType });
+        }
+      } catch (e: any) {
+        log.warn('[Sidebar] 下单提交限制检查失败（放行）:', e.message);
+      }
     }
 
     // 判断订单商品类型
@@ -2850,6 +2868,7 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
       totalAmount: Number(totalAmount) || 0,
       finalAmount: Number(totalAmount) || 0,
       depositAmount: Number(depositAmount) || 0,
+      shippingFee: Number(shippingFee) || 0,
       paymentMethod: paymentMethod || null,
       paymentMethodOther: req.body.paymentMethodOther || null,
       status: 'pending',
@@ -2865,7 +2884,7 @@ router.post('/sidebar/orders', authenticateSidebarToken, async (req: Request, re
       serviceWechat: req.body.serviceWechat || '',
       expressCompany: req.body.expressCompany || '',
       depositScreenshots: Array.isArray(screenshots) && screenshots.length > 0 ? screenshots : null,
-      codAmount: Math.max(0, (Number(totalAmount) || 0) - (Number(depositAmount) || 0)),
+      codAmount: Math.max(0, (Number(totalAmount) || 0) + (Number(shippingFee) || 0) - (Number(depositAmount) || 0)),
     };
     const order: any = orderRepo.create(orderData);
     const savedOrder: any = await orderRepo.save(order);

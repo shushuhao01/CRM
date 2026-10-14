@@ -311,6 +311,7 @@ export const useOrderStore = createPersistentStore('order', () => {
       totalAmount: Number(payload.totalAmount) || 0,
       collectAmount: Number(payload.collectAmount) || 0,
       depositAmount: Number(payload.depositAmount) || 0,
+      shippingFee: Number(payload.shippingFee) || 0,
       depositScreenshot: payload.depositScreenshot,
       depositScreenshots: payload.depositScreenshots,
       receiverName: payload.receiverName || '',
@@ -1316,10 +1317,9 @@ export const useOrderStore = createPersistentStore('order', () => {
       const { orderApi } = await import('@/api/order')
       const response = await orderApi.getPendingCancelOrders()
 
-      if (response && response.data) {
-        return response.data
-      }
-      return []
+      const payload: any = response?.data
+      if (Array.isArray(payload)) return payload
+      return payload?.list ?? []
     } catch (error) {
       console.warn('Order Store: 从API加载待审核取消订单失败:', error)
       return []
@@ -1332,10 +1332,9 @@ export const useOrderStore = createPersistentStore('order', () => {
       const { orderApi } = await import('@/api/order')
       const response = await orderApi.getAuditedCancelOrders()
 
-      if (response && response.data) {
-        return response.data
-      }
-      return []
+      const payload: any = response?.data
+      if (Array.isArray(payload)) return payload
+      return payload?.list ?? []
     } catch (error) {
       console.warn('Order Store: 从API加载已审核取消订单失败:', error)
       return []

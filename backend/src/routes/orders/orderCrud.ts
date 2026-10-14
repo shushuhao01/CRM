@@ -23,6 +23,7 @@ import {
 } from './orderHelpers';
 import { log } from '../../config/logger';
 import { writeOperationLog, extractUserInfo } from '../../utils/operationLogWriter';
+import { notifyDashboardDataChanged } from '../../utils/dashboardBroadcast';
 
 /** 从请求中提取操作人完整信息（姓名+部门）*/
 function getOperatorInfo(req: Request) {
@@ -328,10 +329,13 @@ export function registerCrudRoutes(router: Router): void {router.get('/', authen
         totalQuantity,  // 🔥 新增：总数量
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
-        // 🔥 代收金额 = 订单总额 - 定金
-        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        shippingFee: Number(order.shippingFee) || 0,
+        // 🔥 应付总额 = 订单总额 + 邮费
+        payableAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0),
+        // 🔥 代收金额 = 应付总额(订单总额+邮费) - 定金
+        collectAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0),
         // 🔥 代收相关字段
-        codAmount: order.codAmount !== undefined && order.codAmount !== null ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0)),
+        codAmount: order.codAmount !== undefined && order.codAmount !== null ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0)),
         codStatus: order.codStatus || 'pending',
         receiverName: order.shippingName || '',
         receiverPhone: order.shippingPhone || '',
@@ -698,10 +702,13 @@ router.get('/:id', async (req: Request, res: Response) => {
       products: products,
       totalAmount: Number(order.totalAmount) || 0,
       depositAmount: Number(order.depositAmount) || 0,
-      // 🔥 代收金额 = 订单总额 - 定金
-      collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+      shippingFee: Number(order.shippingFee) || 0,
+      // 🔥 应付总额 = 订单总额 + 邮费
+      payableAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0),
+      // 🔥 代收金额 = 应付总额(订单总额+邮费) - 定金
+      collectAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0),
       // 🔥 代收相关字段
-      codAmount: order.codAmount !== undefined && order.codAmount !== null ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0)),
+      codAmount: order.codAmount !== undefined && order.codAmount !== null ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0)),
       codStatus: order.codStatus || 'pending',
       hasPendingCodApplication: hasPendingCodApplication,
       receiverName: order.shippingName || '',
@@ -795,6 +802,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       discount,
       collectAmount,
       depositAmount,
+      shippingFee,
       depositScreenshots,
       depositScreenshot,
       receiverName,
@@ -876,6 +884,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     // 计算金额
     const finalTotalAmount = Number(totalAmount) || 0;
     const finalDepositAmount = Number(depositAmount) || 0;
+    const finalShippingFee = Number(shippingFee) || 0;
     const finalAmount = finalTotalAmount - (Number(discount) || 0);
 
     // 处理定金截图
@@ -955,6 +964,56 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       }
     }
 
+    // 🔒 部门+年龄/性别下单限制检查（订单配置，与建户年龄/性别配置独立；同豁免：预约单/退货单不检查）
+    if (markType !== 'reserved' && markType !== 'return') {
+      try {
+        const { checkDepartmentAgeGenderRestriction } = await import('../../utils/ageGenderRestriction');
+        const agTenantId = TenantContextManager.getTenantId() || currentUser?.tenantId || null;
+        const agCheck = await checkDepartmentAgeGenderRestriction(agTenantId, createdByDepartmentId, {
+          age: verifiedCustomer?.age,
+          gender: verifiedCustomer?.gender,
+        });
+        if (!agCheck.allowed) {
+          log.warn(`⚠️ [订单创建] 部门年龄/性别下单限制: ${agCheck.message}`);
+          return res.status(400).json({
+            success: false,
+            code: 400,
+            message: agCheck.message,
+            limitType: agCheck.limitType
+          });
+        }
+      } catch (e: any) {
+        // 检查异常放行，不阻塞正常业务
+        log.warn('[订单创建] 部门年龄/性别限制检查失败（放行）:', e.message);
+      }
+    }
+
+    // 🔒 下单提交限制检查（订单配置：邮费最大金额限制 + 定金截图必填；同豁免：预约单/退货单不检查）
+    if (markType !== 'reserved' && markType !== 'return') {
+      try {
+        const { checkOrderSubmitRestrictions } = await import('../../utils/orderSubmitRestriction');
+        const osrTenantId = TenantContextManager.getTenantId() || currentUser?.tenantId || null;
+        const osrCheck = await checkOrderSubmitRestrictions(osrTenantId, {
+          shippingFee: finalShippingFee,
+          isOverseas: !!verifiedCustomer?.overseasAddress,
+          depositAmount: finalDepositAmount,
+          hasDepositScreenshot: finalDepositScreenshots.length > 0,
+        });
+        if (!osrCheck.allowed) {
+          log.warn(`⚠️ [订单创建] 下单提交限制: ${osrCheck.message}`);
+          return res.status(400).json({
+            success: false,
+            code: 400,
+            message: osrCheck.message,
+            limitType: osrCheck.limitType
+          });
+        }
+      } catch (e: any) {
+        // 检查异常放行，不阻塞正常业务
+        log.warn('[订单创建] 下单提交限制检查失败（放行）:', e.message);
+      }
+    }
+
     log.info('📝 [订单创建] 准备创建订单:', {
       orderNumber: generatedOrderNumber,
       customerId,
@@ -1010,6 +1069,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       discountAmount: Number(discount) || 0,
       finalAmount: finalAmount,
       depositAmount: finalDepositAmount,
+      shippingFee: finalShippingFee,
       depositScreenshots: finalDepositScreenshots.length > 0 ? finalDepositScreenshots : undefined,
       paymentStatus: finalDepositAmount > 0 ? 'partial' : 'unpaid',
       paymentMethod: paymentMethod || undefined,
@@ -1022,7 +1082,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       orderProductType: orderProductType,
       remark: remark || '',
       // 🔥 代收相关字段初始化
-      codAmount: finalTotalAmount - finalDepositAmount, // 初始代收金额 = 总额 - 定金
+      codAmount: finalTotalAmount + finalShippingFee - finalDepositAmount, // 初始代收金额 = 应付总额(总额+邮费) - 定金
       codStatus: 'pending', // 初始状态为待处理
       // 🔥 新版自定义字段：7个独立字段
       customField1: customFields?.custom_field1 || undefined,
@@ -1218,7 +1278,9 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       products: products,
       totalAmount: finalTotalAmount,
       depositAmount: finalDepositAmount,
-      collectAmount: Number(collectAmount) || finalTotalAmount - finalDepositAmount,
+      shippingFee: finalShippingFee,
+      payableAmount: finalTotalAmount + finalShippingFee,
+      collectAmount: Number(collectAmount) || (finalTotalAmount + finalShippingFee - finalDepositAmount),
       receiverName: receiverName || customerName || '',
       receiverPhone: receiverPhone || customerPhone || '',
       receiverAddress: receiverAddress || '',
@@ -1259,6 +1321,9 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       createdBy: finalCreatedBy,
       createdByName: finalCreatedByName
     }).catch(err => log.error('[订单创建] 发送通知失败:', err));
+
+    // 🔥 广播看板数据变更（订单新建）
+    notifyDashboardDataChanged('orders', currentTenantId);
 
     res.status(201).json({
       success: true,
@@ -1355,15 +1420,16 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     const previousStatus = order.status;
 
     // 🔥 记录编辑前的旧值，供变更日志做新旧对比（避免字段被覆盖后取到新值）
-    const calcCod = (t: any, d: any, cod: any) =>
-      cod !== undefined && cod !== null ? Number(cod) : (Number(t) || 0) - (Number(d) || 0);
+    const calcCod = (t: any, d: any, s: any, cod: any) =>
+      cod !== undefined && cod !== null ? Number(cod) : (Number(t) || 0) + (Number(s) || 0) - (Number(d) || 0);
     const oldSnapshot = {
       shippingName: order.shippingName,
       shippingPhone: order.shippingPhone,
       shippingAddress: order.shippingAddress,
       totalAmount: Number(order.totalAmount) || 0,
       depositAmount: Number(order.depositAmount) || 0,
-      codAmount: calcCod(order.totalAmount, order.depositAmount, order.codAmount),
+      shippingFee: Number(order.shippingFee) || 0,
+      codAmount: calcCod(order.totalAmount, order.depositAmount, order.shippingFee, order.codAmount),
       expressCompany: order.expressCompany,
       trackingNumber: order.trackingNumber,
       remark: order.remark,
@@ -1406,22 +1472,25 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     // 🔥 修复：添加金额字段的更新，并同步codAmount
     const oldTotalAmount = Number(order.totalAmount) || 0;
     const oldDepositAmount = Number(order.depositAmount) || 0;
-    const oldCollectAmount = oldTotalAmount - oldDepositAmount;
+    const oldShippingFee = Number(order.shippingFee) || 0;
+    const oldCollectAmount = oldTotalAmount + oldShippingFee - oldDepositAmount;
     const oldCodAmount = order.codAmount !== undefined && order.codAmount !== null ? Number(order.codAmount) : oldCollectAmount;
 
     if (updateData.totalAmount !== undefined) order.totalAmount = updateData.totalAmount;
     if (updateData.depositAmount !== undefined) order.depositAmount = updateData.depositAmount;
+    if (updateData.shippingFee !== undefined) order.shippingFee = Number(updateData.shippingFee) || 0;
     if (updateData.discountAmount !== undefined) order.discountAmount = updateData.discountAmount;
 
     // 🔥 修复Bug2：编辑订单时同步更新codAmount
-    // 只有当codAmount之前没有被代收管理修改过（即codAmount等于旧的totalAmount-depositAmount）时才同步
+    // 只有当codAmount之前没有被代收管理修改过（即codAmount等于旧的应付总额-定金）时才同步
     // 如果codAmount已被代收管理或取消审核修改过，则保留不变
-    if (updateData.totalAmount !== undefined || updateData.depositAmount !== undefined) {
+    if (updateData.totalAmount !== undefined || updateData.depositAmount !== undefined || updateData.shippingFee !== undefined) {
       const isCodUnmodified = Math.abs(oldCodAmount - oldCollectAmount) < 0.01;
       if (isCodUnmodified) {
         const newTotalAmount = Number(order.totalAmount) || 0;
         const newDepositAmount = Number(order.depositAmount) || 0;
-        order.codAmount = newTotalAmount - newDepositAmount;
+        const newShippingFee = Number(order.shippingFee) || 0;
+        order.codAmount = newTotalAmount + newShippingFee - newDepositAmount;
         log.info(`[订单编辑] codAmount同步更新: ${oldCodAmount} → ${order.codAmount}`);
       } else {
         log.info(`[订单编辑] codAmount已被代收管理修改过（${oldCodAmount} → ${oldCollectAmount})，保留不变`);
@@ -1770,9 +1839,14 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
         editFields.push('定金金额');
         changeDetails.push(`定金金额: ¥${oldSnapshot.depositAmount} → ¥${Number(updateData.depositAmount)}`);
       }
-      // 代收金额（编辑订单金额/定金时按规则同步变更）
-      const newCodAmount = calcCod(order.totalAmount, order.depositAmount, order.codAmount);
-      if ((updateData.totalAmount !== undefined || updateData.depositAmount !== undefined) && Math.abs(newCodAmount - oldSnapshot.codAmount) >= 0.01) {
+      // 邮费
+      if (updateData.shippingFee !== undefined && Math.abs(Number(updateData.shippingFee) - oldSnapshot.shippingFee) >= 0.01) {
+        editFields.push('邮费');
+        changeDetails.push(`邮费: ¥${oldSnapshot.shippingFee} → ¥${Number(updateData.shippingFee)}`);
+      }
+      // 代收金额（编辑订单金额/定金/邮费时按规则同步变更）
+      const newCodAmount = calcCod(order.totalAmount, order.depositAmount, order.shippingFee, order.codAmount);
+      if ((updateData.totalAmount !== undefined || updateData.depositAmount !== undefined || updateData.shippingFee !== undefined) && Math.abs(newCodAmount - oldSnapshot.codAmount) >= 0.01) {
         changeDetails.push(`代收金额: ¥${oldSnapshot.codAmount} → ¥${newCodAmount}`);
       }
       // 快递公司
@@ -1857,6 +1931,9 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       }
     }
 
+    // 🔥 广播看板数据变更（订单更新）
+    notifyDashboardDataChanged('orders', (req as any).tenantId || TenantContextManager.getTenantId());
+
     res.json({
       success: true,
       code: 200,
@@ -1899,6 +1976,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 
     await orderRepository.remove(order);
+
+    // 🔥 广播看板数据变更（订单删除）
+    notifyDashboardDataChanged('orders', (req as any).tenantId || TenantContextManager.getTenantId());
 
     res.json({
       success: true,
@@ -1987,6 +2067,9 @@ router.post('/:id/submit-audit', authenticateToken, async (req: Request, res: Re
       createdBy: order.createdBy,
       createdByName: order.createdByName
     }).catch(err => log.error('[订单提审] 发送通知失败:', err));
+
+    // 🔥 广播看板数据变更（订单提审）
+    notifyDashboardDataChanged('orders', (req as any).tenantId || TenantContextManager.getTenantId());
 
     res.json({
       success: true,
@@ -2164,6 +2247,9 @@ router.post('/:id/audit', authenticateToken, async (req: Request, res: Response)
       { operatorDepartment: auditOpInfo.departmentName, actionType: isApproved ? 'audit_approve' : 'audit_reject' }
     );
 
+    // 🔥 广播看板数据变更（订单审核）
+    notifyDashboardDataChanged('orders', (req as any).tenantId || TenantContextManager.getTenantId());
+
     res.json({
       success: true,
       code: 200,
@@ -2266,6 +2352,9 @@ router.post('/:id/cancel-audit', authenticateToken, async (req: Request, res: Re
       description: action === 'approve' ? `取消申请已通过${remark ? `，原因：${remark}` : ''}` : `取消申请已拒绝${remark ? `，原因：${remark}` : ''}`,
       ...cancelAuditUserInfo,
     });
+
+    // 🔥 广播看板数据变更（取消申请审核）
+    notifyDashboardDataChanged('orders', (req as any).tenantId || TenantContextManager.getTenantId());
 
     res.json({
       success: true,

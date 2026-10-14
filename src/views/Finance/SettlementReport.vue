@@ -34,17 +34,17 @@
     </div>
 
     <!-- 快捷日期筛选 -->
-    <div class="quick-date-filters">
-      <el-button
-        v-for="filter in quickDateFilters"
-        :key="filter.value"
-        :type="currentDateFilter === filter.value ? 'primary' : ''"
-        round
-        size="small"
-        @click="handleQuickDateFilter(filter.value)"
-      >
-        {{ filter.label }}
-      </el-button>
+    <div class="quick-filters">
+      <div class="quick-btn-group">
+        <button
+          v-for="filter in quickDateFilters"
+          :key="filter.value"
+          :class="['quick-btn', { active: currentDateFilter === filter.value }]"
+          @click="handleQuickDateFilter(filter.value)"
+        >
+          {{ filter.label }}
+        </button>
+      </div>
     </div>
 
     <!-- 汇总卡片（第一行：核心指标） -->
@@ -265,14 +265,10 @@ const { isDark, chartColors } = useTheme()
 // 快捷日期筛选选项
 const quickDateFilters = [
   { label: '今日', value: 'today' },
+  { label: '昨日', value: 'yesterday' },
+  { label: '本周', value: 'thisWeek' },
   { label: '本月', value: 'thisMonth' },
   { label: '上月', value: 'lastMonth' },
-  { label: '本季', value: 'thisQuarter' },
-  { label: '上季', value: 'lastQuarter' },
-  { label: 'Q1', value: 'q1' },
-  { label: 'Q2', value: 'q2' },
-  { label: 'Q3', value: 'q3' },
-  { label: 'Q4', value: 'q4' },
   { label: '今年', value: 'thisYear' },
   { label: '全部', value: 'all' }
 ]
@@ -374,6 +370,16 @@ const handleQuickDateFilter = (value: string) => {
       startDate.value = formatDateStr(today)
       endDate.value = formatDateStr(today)
       break
+    case 'yesterday':
+      const yesterday = new Date(today.getTime() - 86400000)
+      startDate.value = formatDateStr(yesterday)
+      endDate.value = formatDateStr(yesterday)
+      break
+    case 'thisWeek':
+      const weekDay = today.getDay() || 7
+      startDate.value = formatDateStr(new Date(year, month, today.getDate() - weekDay + 1))
+      endDate.value = formatDateStr(today)
+      break
     case 'thisMonth':
       startDate.value = formatDateStr(new Date(year, month, 1))
       endDate.value = formatDateStr(new Date(year, month + 1, 0))
@@ -381,32 +387,6 @@ const handleQuickDateFilter = (value: string) => {
     case 'lastMonth':
       startDate.value = formatDateStr(new Date(year, month - 1, 1))
       endDate.value = formatDateStr(new Date(year, month, 0))
-      break
-    case 'thisQuarter':
-      const thisQuarterStart = Math.floor(month / 3) * 3
-      startDate.value = formatDateStr(new Date(year, thisQuarterStart, 1))
-      endDate.value = formatDateStr(new Date(year, thisQuarterStart + 3, 0))
-      break
-    case 'lastQuarter':
-      const lastQuarterStart = Math.floor(month / 3) * 3 - 3
-      startDate.value = formatDateStr(new Date(year, lastQuarterStart, 1))
-      endDate.value = formatDateStr(new Date(year, lastQuarterStart + 3, 0))
-      break
-    case 'q1':
-      startDate.value = `${year}-01-01`
-      endDate.value = `${year}-03-31`
-      break
-    case 'q2':
-      startDate.value = `${year}-04-01`
-      endDate.value = `${year}-06-30`
-      break
-    case 'q3':
-      startDate.value = `${year}-07-01`
-      endDate.value = `${year}-09-30`
-      break
-    case 'q4':
-      startDate.value = `${year}-10-01`
-      endDate.value = `${year}-12-31`
       break
     case 'thisYear':
       startDate.value = `${year}-01-01`
@@ -1028,15 +1008,40 @@ onMounted(() => {
   }
 }
 
-.quick-date-filters {
-  background: white;
+.quick-filters {
+  background: #fff;
+  padding: 12px 16px;
   border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+}
+
+.quick-btn-group {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.quick-btn {
+  padding: 8px 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  color: #606266;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-btn:hover {
+  color: #409eff;
+  border-color: #c6e2ff;
+  background: #ecf5ff;
+}
+
+.quick-btn.active {
+  color: #fff;
+  background: #409eff;
+  border-color: #409eff;
 }
 
 .summary-cards {

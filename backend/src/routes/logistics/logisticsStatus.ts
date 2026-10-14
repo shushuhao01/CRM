@@ -18,6 +18,8 @@ import { ensureStatusHistoryTable } from '../orders/orderHelpers';
 
 import { log } from '../../config/logger';
 import { writeOperationLog, extractUserInfo, translateStatus } from '../../utils/operationLogWriter';
+import { notifyDashboardDataChanged } from '../../utils/dashboardBroadcast';
+import { TenantContextManager } from '../../utils/tenantContext';
 import { AppDataSource } from '../../config/database';
 export function registerStatusAndConfigRoutes(router: Router): void {
 router.get('/permission', (req: Request, res: Response) => {
@@ -387,6 +389,9 @@ router.post('/order/status', async (req, res) => {
         break;
     }
 
+    // 🔥 广播看板数据变更（物流状态更新）
+    notifyDashboardDataChanged('logistics', (req as any).tenantId || TenantContextManager.getTenantId());
+
     return res.json({
       success: true,
       message: '物流状态更新成功',
@@ -543,6 +548,9 @@ router.post('/order/batch-status', async (req, res) => {
 
     log.info('✅ 批量更新订单物流状态完成:', { successCount, failCount, failedOrders });
 
+    // 🔥 广播看板数据变更（批量物流状态更新）
+    notifyDashboardDataChanged('logistics', (req as any).tenantId || TenantContextManager.getTenantId());
+
     return res.json({
       success: true,
       message: `批量更新完成，成功 ${successCount} 个，失败 ${failCount} 个`,
@@ -603,6 +611,9 @@ router.post('/order/todo', async (req, res) => {
     await orderRepository.save(order);
 
     log.info('✅ 订单待办设置成功:', { orderNo, todoDate: todoDateStr, remark });
+
+    // 🔥 广播看板数据变更（订单待办）
+    notifyDashboardDataChanged('logistics', (req as any).tenantId || TenantContextManager.getTenantId());
 
     return res.json({
       success: true,

@@ -240,16 +240,19 @@
         </template>
       </el-alert>
 
-      <!-- 部门选择 -->
+      <!-- 部门选择（支持多选 / 全部部门） -->
       <el-form label-width="140px">
         <el-form-item label="选择部门">
           <el-select
-            v-model="selectedDepartmentId"
-            placeholder="请选择要配置的部门"
-            style="width: 300px"
-            @change="loadDepartmentLimit"
+            v-model="selectedDepartmentIds"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="请选择要配置的部门（可多选 / 全部部门）"
+            style="width: 420px"
             clearable
           >
+            <el-option label="全部部门" :value="ALL_DEPARTMENTS" />
             <el-option
               v-for="dept in departmentList"
               :key="dept.id"
@@ -262,7 +265,7 @@
             :icon="Plus"
             style="margin-left: 10px;"
             @click="addDepartmentLimit"
-            :disabled="!selectedDepartmentId"
+            :disabled="selectedDepartmentIds.length === 0"
           >
             添加/编辑配置
           </el-button>
@@ -355,7 +358,11 @@
             <el-switch v-model="row.isEnabled" @change="toggleDeptRegion(row)" />
           </template>
         </el-table-column>
-        <el-table-column prop="departmentName" label="部门名称" width="180" />
+        <el-table-column label="部门名称" min-width="180">
+          <template #default="{ row }">
+            {{ (row.departmentNames || []).join('、') || '—' }}
+          </template>
+        </el-table-column>
         <el-table-column label="限制地区" min-width="300">
           <template #default="{ row }">
             <el-tag
@@ -380,6 +387,125 @@
       <el-empty v-else description="暂无部门+地区下单限制配置" />
     </el-card>
 
+    <!-- 部门+年龄/性别下单限制配置 -->
+    <el-card class="config-card">
+      <template #header>
+        <div class="card-header">
+          <span>部门+年龄/性别下单限制</span>
+          <el-tag type="danger" size="small">全局生效</el-tag>
+        </div>
+      </template>
+
+      <el-alert
+        type="info"
+        :closable="false"
+        style="margin-bottom: 20px;"
+      >
+        <template #title>
+          配置说明：针对指定部门设置限制客户的年龄/性别，该部门成员创建订单时若客户年龄或性别命中限制将被拦截（客户未填年龄/性别时不拦截）。选「全部部门」对所有部门生效。与上方部门下单限制、部门+地区限制相互独立。
+        </template>
+      </el-alert>
+
+      <div style="margin-bottom: 15px;">
+        <el-button type="primary" :icon="Plus" @click="addDeptAgeGender">添加部门年龄性别限制</el-button>
+      </div>
+
+      <el-table :data="departmentAgeGenderRestrictions" style="width: 100%" v-if="departmentAgeGenderRestrictions.length > 0">
+        <el-table-column label="启用" width="80">
+          <template #default="{ row }">
+            <el-switch v-model="row.isEnabled" @change="toggleDeptAgeGender(row)" />
+          </template>
+        </el-table-column>
+        <el-table-column label="部门" min-width="180">
+          <template #default="{ row }">
+            {{ (row.departmentNames || []).join('、') || '—' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="年龄限制" min-width="150">
+          <template #default="{ row }">
+            <el-tag v-if="row.ageEnabled" type="warning" size="small">{{ ageRangeText(row) }}</el-tag>
+            <el-tag v-else type="info" size="small">不限</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="性别限制" min-width="150">
+          <template #default="{ row }">
+            <el-tag
+              v-if="row.genderEnabled && (row.genders || []).length > 0"
+              type="warning"
+              size="small"
+            >
+              仅允许 {{ (row.genders || []).map(genderLabel).join('、') }}
+            </el-tag>
+            <el-tag v-else type="info" size="small">不限</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="reason" label="限制原因" min-width="140" show-overflow-tooltip />
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" link @click="editDeptAgeGender(row)">编辑</el-button>
+            <el-button size="small" type="danger" link @click="deleteDeptAgeGender(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-empty v-else description="暂无部门年龄/性别下单限制配置" />
+    </el-card>
+
+    <!-- 下单提交限制配置（邮费最大金额限制 + 定金截图必填，同卡片省地方） -->
+    <el-card class="config-card">
+      <template #header>
+        <div class="card-header">
+          <span>下单提交限制（邮费限制 / 定金截图）</span>
+          <el-tag type="warning" size="small">下单时校验</el-tag>
+        </div>
+      </template>
+
+      <el-alert
+        type="info"
+        :closable="false"
+        style="margin-bottom: 20px;"
+      >
+        <template #title>
+          配置说明：邮费为独立字段，不计入订单总额。开启「邮费最大金额限制」后，下单时若客户自付邮费超过设定金额将被拦截（可豁免境外地址客户，防止把订单金额算进邮费钻限制空子）；开启「定金截图必填」后，仅当订单填写了定金金额（大于 0）时才要求上传定金截图，未填写定金金额则无需上传。两项默认关闭。
+        </template>
+      </el-alert>
+
+      <el-form label-width="150px">
+        <el-divider content-position="left">邮费最大金额限制</el-divider>
+        <el-form-item label="启用邮费限制">
+          <el-switch v-model="orderSubmitConfig.shippingFeeLimitEnabled" />
+        </el-form-item>
+        <el-form-item label="邮费最大金额">
+          <el-input-number
+            v-model="orderSubmitConfig.maxShippingFee"
+            :min="0"
+            :precision="0"
+            :step="1"
+            :disabled="!orderSubmitConfig.shippingFeeLimitEnabled"
+            style="width: 200px"
+          />
+          <span style="margin-left: 10px; color: #909399;">元（客户自付邮费超过该金额将被拦截）</span>
+        </el-form-item>
+        <el-form-item label="豁免境外地址">
+          <el-switch
+            v-model="orderSubmitConfig.exemptOverseas"
+            :disabled="!orderSubmitConfig.shippingFeeLimitEnabled"
+          />
+          <span style="margin-left: 10px; color: #909399;">开启后，境外地址客户不受邮费上限限制</span>
+        </el-form-item>
+
+        <el-divider content-position="left">定金截图</el-divider>
+        <el-form-item label="定金截图必填">
+          <el-switch v-model="orderSubmitConfig.depositScreenshotRequired" />
+          <span style="margin-left: 10px; color: #909399;">开启后，仅当订单【填写了定金金额（大于 0）】时才要求上传定金截图；未填写定金金额则无需上传，可直接提交</span>
+        </el-form-item>
+      </el-form>
+
+      <div style="margin-top: 10px;">
+        <el-button type="primary" :loading="savingOrderSubmit" @click="saveOrderSubmitConfig">保存配置</el-button>
+      </div>
+    </el-card>
+
     <!-- 部门+地区下单限制编辑对话框 -->
     <el-dialog
       v-model="deptRegionDialogVisible"
@@ -389,7 +515,16 @@
     >
       <el-form label-width="90px">
         <el-form-item label="部门" required>
-          <el-select v-model="deptRegionForm.departmentId" placeholder="请选择部门" style="width: 300px" filterable @change="onDeptRegionDeptChange">
+          <el-select
+            v-model="deptRegionForm.departmentIds"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="请选择部门（可多选 / 全部部门）"
+            style="width: 420px"
+            filterable
+          >
+            <el-option label="全部部门" :value="ALL_DEPARTMENTS" />
             <el-option v-for="dept in departmentList" :key="dept.id" :label="dept.name" :value="dept.id" />
           </el-select>
         </el-form-item>
@@ -414,6 +549,70 @@
       </template>
     </el-dialog>
 
+    <!-- 部门+年龄/性别下单限制编辑对话框 -->
+    <el-dialog
+      v-model="deptAgeGenderDialogVisible"
+      title="部门+年龄/性别下单限制配置"
+      width="640px"
+      :close-on-click-modal="false"
+    >
+      <el-form label-width="130px">
+        <el-form-item label="部门" required>
+          <el-select
+            v-model="deptAgeGenderForm.departmentIds"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="请选择部门（可多选 / 全部部门）"
+            style="width: 420px"
+            filterable
+          >
+            <el-option label="全部部门" :value="ALL_DEPARTMENTS" />
+            <el-option v-for="dept in departmentList" :key="dept.id" :label="dept.name" :value="dept.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="启用状态">
+          <el-switch v-model="deptAgeGenderForm.isEnabled" />
+        </el-form-item>
+
+        <el-divider content-position="left">年龄限制</el-divider>
+        <el-form-item label="启用年龄限制">
+          <el-switch v-model="deptAgeGenderForm.ageEnabled" />
+        </el-form-item>
+        <template v-if="deptAgeGenderForm.ageEnabled">
+          <el-form-item label="最小年龄">
+            <el-input-number v-model="deptAgeGenderForm.ageMin" :min="0" :max="120" />
+            <span style="margin-left: 8px; color: #909399;">岁（0 = 不限制下限）</span>
+          </el-form-item>
+          <el-form-item label="最大年龄">
+            <el-input-number v-model="deptAgeGenderForm.ageMax" :min="0" :max="120" />
+            <span style="margin-left: 8px; color: #909399;">岁（0 = 不限制上限）</span>
+          </el-form-item>
+        </template>
+
+        <el-divider content-position="left">性别限制</el-divider>
+        <el-form-item label="启用性别限制">
+          <el-switch v-model="deptAgeGenderForm.genderEnabled" />
+        </el-form-item>
+        <el-form-item label="允许的性别" v-if="deptAgeGenderForm.genderEnabled">
+          <el-checkbox-group v-model="deptAgeGenderForm.genders">
+            <el-checkbox label="male">男</el-checkbox>
+            <el-checkbox label="female">女</el-checkbox>
+          </el-checkbox-group>
+          <span style="margin-left: 8px; color: #909399; font-size: 12px;">不勾选 = 不限制</span>
+        </el-form-item>
+
+        <el-form-item label="限制原因">
+          <el-input v-model="deptAgeGenderForm.reason" placeholder="选填，命中时随提示显示" maxlength="100" style="width: 420px" />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="deptAgeGenderDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingDeptAgeGender" @click="saveDeptAgeGender">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 部门下单限制编辑对话框 -->
     <el-dialog
       v-model="departmentLimitDialogVisible"
@@ -422,8 +621,11 @@
       :close-on-click-modal="false"
     >
       <el-form :model="departmentLimitForm" label-width="140px">
-        <el-form-item label="部门">
-          <el-tag size="large">{{ departmentLimitForm.departmentName }}</el-tag>
+        <el-form-item label="应用到部门">
+          <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+            <el-tag v-for="id in pendingDepartmentIds" :key="id" size="large">{{ deptLabel(id) }}</el-tag>
+            <span style="color: #909399; font-size: 12px;">（保存后将把下方限制应用到以上部门）</span>
+          </div>
         </el-form-item>
 
         <el-divider content-position="left">下单次数限制</el-divider>
@@ -1467,11 +1669,21 @@ interface Department {
   name: string
 }
 
+const ALL_DEPARTMENTS = '__ALL__'
+
 const departmentList = ref<Department[]>([])
 const departmentLimits = ref<DepartmentLimit[]>([])
-const selectedDepartmentId = ref('')
+const selectedDepartmentIds = ref<string[]>([])
 const departmentLimitDialogVisible = ref(false)
 const savingDepartmentLimit = ref(false)
+// 当前对话框将要应用到的部门（保存时使用）
+const pendingDepartmentIds = ref<string[]>([])
+
+// 部门ID → 显示名（含「全部部门」特殊值）
+const deptLabel = (id: string): string => {
+  if (id === ALL_DEPARTMENTS) return '全部部门'
+  return departmentList.value.find(d => d.id === id)?.name || id
+}
 
 const departmentLimitForm = reactive<DepartmentLimit>({
   departmentId: '',
@@ -1521,34 +1733,24 @@ const loadDepartmentLimits = async () => {
   }
 }
 
-// 加载指定部门的限制配置
-const loadDepartmentLimit = async (departmentId: string) => {
-  if (!departmentId) return
-
-  const existing = departmentLimits.value.find(l => l.departmentId === departmentId)
-  if (existing) {
-    Object.assign(departmentLimitForm, existing)
-  }
-}
-
-// 添加部门限制配置
+// 添加/编辑部门限制配置（支持一次对多个部门应用同一套限制）
 const addDepartmentLimit = () => {
-  if (!selectedDepartmentId.value) {
+  if (selectedDepartmentIds.value.length === 0) {
     ElMessage.warning('请先选择部门')
     return
   }
 
-  const dept = departmentList.value.find(d => d.id === selectedDepartmentId.value)
-  if (!dept) return
+  pendingDepartmentIds.value = [...selectedDepartmentIds.value]
 
-  // 检查是否已存在配置
-  const existing = departmentLimits.value.find(l => l.departmentId === selectedDepartmentId.value)
+  // 仅选中单个部门且已有配置时，回填该配置便于编辑；否则使用默认值
+  const singleId = pendingDepartmentIds.value.length === 1 ? pendingDepartmentIds.value[0] : ''
+  const existing = singleId ? departmentLimits.value.find(l => l.departmentId === singleId) : undefined
   if (existing) {
     Object.assign(departmentLimitForm, existing)
   } else {
     // 重置表单
-    departmentLimitForm.departmentId = dept.id
-    departmentLimitForm.departmentName = dept.name
+    departmentLimitForm.departmentId = ''
+    departmentLimitForm.departmentName = ''
     departmentLimitForm.orderCountEnabled = false
     departmentLimitForm.maxOrderCount = 1
     departmentLimitForm.singleAmountEnabled = false
@@ -1567,30 +1769,42 @@ const addDepartmentLimit = () => {
 // 编辑部门限制配置
 const editDepartmentLimit = (row: DepartmentLimit) => {
   Object.assign(departmentLimitForm, row)
+  pendingDepartmentIds.value = [row.departmentId]
   departmentLimitDialogVisible.value = true
 }
 
-// 保存部门限制配置
+// 保存部门限制配置（对本次选中的所有部门逐个 upsert）
 const saveDepartmentLimit = async () => {
+  const ids = pendingDepartmentIds.value.length > 0
+    ? pendingDepartmentIds.value
+    : (departmentLimitForm.departmentId ? [departmentLimitForm.departmentId] : [])
+  if (ids.length === 0) {
+    ElMessage.warning('请先选择部门')
+    return
+  }
   try {
     savingDepartmentLimit.value = true
     const token = localStorage.getItem('auth_token')
-    const response = await fetch('/api/v1/system/department-order-limits', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(departmentLimitForm)
-    })
-    const result = await response.json()
-    if (result.success) {
-      ElMessage.success('部门下单限制配置保存成功')
-      departmentLimitDialogVisible.value = false
-      await loadDepartmentLimits()
-    } else {
-      ElMessage.error(result.message || '保存失败')
+    let ok = 0
+    for (const id of ids) {
+      const response = await fetch('/api/v1/system/department-order-limits', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ ...departmentLimitForm, departmentId: id, departmentName: deptLabel(id) })
+      })
+      const result = await response.json()
+      if (result.success) ok++
     }
+    if (ok === ids.length) {
+      ElMessage.success(`部门下单限制配置保存成功（已应用到 ${ok} 个部门）`)
+      departmentLimitDialogVisible.value = false
+    } else {
+      ElMessage.error(`保存完成：成功 ${ok}/${ids.length} 个部门，请重试失败的部门`)
+    }
+    await loadDepartmentLimits()
   } catch (error) {
     console.error('保存部门下单限制配置失败:', error)
     ElMessage.error('保存失败')
@@ -1643,8 +1857,8 @@ interface DeptRegionRecord {
 }
 
 interface DepartmentRegionLimit {
-  departmentId: string
-  departmentName: string
+  departmentIds: string[]
+  departmentNames: string[]
   regions: DeptRegionRecord[]
   isEnabled?: boolean
 }
@@ -1652,9 +1866,11 @@ interface DepartmentRegionLimit {
 const departmentRegionRestrictions = ref<DepartmentRegionLimit[]>([])
 const deptRegionDialogVisible = ref(false)
 const savingDeptRegion = ref(false)
+// 当前编辑的记录在列表中的下标（-1 表示新增）
+const deptRegionEditIndex = ref<number>(-1)
 const deptRegionForm = reactive<DepartmentRegionLimit>({
-  departmentId: '',
-  departmentName: '',
+  departmentIds: [],
+  departmentNames: [],
   regions: [],
   isEnabled: true
 })
@@ -1668,10 +1884,18 @@ const loadDepartmentRegionRestrictions = async () => {
     })
     const result = await response.json()
     if (result.success && Array.isArray(result.data)) {
-      // 规范化 isEnabled（undefined 视为启用，保证开关显示正确）
-      departmentRegionRestrictions.value = result.data.map(
-        (r: DepartmentRegionLimit) => ({ ...r, isEnabled: r.isEnabled !== false })
-      )
+      // 规范化部门与启用状态（兼容旧的单部门字段）
+      departmentRegionRestrictions.value = result.data.map((r: any) => ({
+        ...r,
+        departmentIds: Array.isArray(r.departmentIds)
+          ? r.departmentIds.map(String)
+          : (r.departmentId ? [String(r.departmentId)] : []),
+        departmentNames: Array.isArray(r.departmentNames)
+          ? r.departmentNames.map(String)
+          : (r.departmentName ? [String(r.departmentName)] : []),
+        regions: Array.isArray(r.regions) ? r.regions : [],
+        isEnabled: r.isEnabled !== false
+      }))
     }
   } catch (error) {
     console.error('加载部门+地区限制配置失败:', error)
@@ -1702,8 +1926,9 @@ const toggleDeptRegion = async (row: DepartmentRegionLimit) => {
 
 // 添加部门地区限制（新建）
 const addDeptRegion = () => {
-  deptRegionForm.departmentId = ''
-  deptRegionForm.departmentName = ''
+  deptRegionEditIndex.value = -1
+  deptRegionForm.departmentIds = []
+  deptRegionForm.departmentNames = []
   deptRegionForm.regions = []
   deptRegionForm.isEnabled = true
   deptRegionDialogVisible.value = true
@@ -1711,17 +1936,12 @@ const addDeptRegion = () => {
 
 // 编辑部门地区限制
 const editDeptRegion = (row: DepartmentRegionLimit) => {
-  deptRegionForm.departmentId = row.departmentId
-  deptRegionForm.departmentName = row.departmentName
+  deptRegionEditIndex.value = departmentRegionRestrictions.value.indexOf(row)
+  deptRegionForm.departmentIds = [...(row.departmentIds || [])]
+  deptRegionForm.departmentNames = [...(row.departmentNames || [])]
   deptRegionForm.regions = JSON.parse(JSON.stringify(row.regions || []))
   deptRegionForm.isEnabled = row.isEnabled !== false
   deptRegionDialogVisible.value = true
-}
-
-// 弹窗内选择部门时同步部门名称
-const onDeptRegionDeptChange = (departmentId: string) => {
-  const dept = departmentList.value.find(d => d.id === departmentId)
-  deptRegionForm.departmentName = dept?.name || ''
 }
 
 // 弹窗内添加一条限制地区记录
@@ -1735,7 +1955,7 @@ const addDeptRegionRecord = () => {
 
 // 保存（按部门 upsert 后全量 PUT）
 const saveDeptRegion = async () => {
-  if (!deptRegionForm.departmentId) {
+  if (deptRegionForm.departmentIds.length === 0) {
     ElMessage.warning('请选择部门')
     return
   }
@@ -1746,16 +1966,16 @@ const saveDeptRegion = async () => {
   }
   try {
     savingDeptRegion.value = true
+    const departmentIds = [...deptRegionForm.departmentIds]
     const record: DepartmentRegionLimit = {
-      departmentId: deptRegionForm.departmentId,
-      departmentName: deptRegionForm.departmentName,
+      departmentIds,
+      departmentNames: departmentIds.map(id => deptLabel(id)),
       regions: validRegions,
       isEnabled: deptRegionForm.isEnabled
     }
-    const list = [...departmentRegionRestrictions.value]
-    const idx = list.findIndex(l => l.departmentId === record.departmentId)
-    if (idx >= 0) {
-      list[idx] = record
+    const list = departmentRegionRestrictions.value.map(r => ({ ...r }))
+    if (deptRegionEditIndex.value >= 0 && deptRegionEditIndex.value < list.length) {
+      list[deptRegionEditIndex.value] = record
     } else {
       list.push(record)
     }
@@ -1785,11 +2005,11 @@ const saveDeptRegion = async () => {
 const deleteDeptRegion = async (row: DepartmentRegionLimit) => {
   try {
     await ElMessageBox.confirm(
-      `确定要删除部门"${row.departmentName}"的地区限制配置吗？`,
+      `确定要删除部门"${(row.departmentNames || []).join('、')}"的地区限制配置吗？`,
       '确认删除',
       { type: 'warning' }
     )
-    const list = departmentRegionRestrictions.value.filter(l => l.departmentId !== row.departmentId)
+    const list = departmentRegionRestrictions.value.filter(l => l !== row)
     const token = localStorage.getItem('auth_token')
     const response = await fetch('/api/v1/system/department-region-restrictions', {
       method: 'PUT',
@@ -1804,6 +2024,283 @@ const deleteDeptRegion = async (row: DepartmentRegionLimit) => {
       ElMessage.error(result.message || '删除失败')
     }
   } catch { /* 用户取消 */ }
+}
+
+// ========== 部门+年龄/性别下单限制配置 ==========
+
+interface DepartmentAgeGenderLimit {
+  id?: string
+  departmentIds: string[]
+  departmentNames: string[]
+  isEnabled?: boolean
+  ageEnabled: boolean
+  ageMin: number
+  ageMax: number
+  genderEnabled: boolean
+  genders: string[]
+  reason?: string
+}
+
+const departmentAgeGenderRestrictions = ref<DepartmentAgeGenderLimit[]>([])
+const deptAgeGenderDialogVisible = ref(false)
+const savingDeptAgeGender = ref(false)
+// 当前编辑的记录在列表中的下标（-1 表示新增）
+const deptAgeGenderEditIndex = ref<number>(-1)
+const deptAgeGenderForm = reactive<DepartmentAgeGenderLimit>({
+  departmentIds: [],
+  departmentNames: [],
+  isEnabled: true,
+  ageEnabled: false,
+  ageMin: 0,
+  ageMax: 0,
+  genderEnabled: false,
+  genders: [],
+  reason: ''
+})
+
+// 性别值 → 显示名
+const genderLabel = (g: string): string => (g === 'male' ? '男' : g === 'female' ? '女' : g)
+
+// 年龄区间可读文案（与后端 ageRangeDesc 保持一致）
+const ageRangeText = (row: DepartmentAgeGenderLimit): string => {
+  const min = Number(row.ageMin) || 0
+  const max = Number(row.ageMax) || 0
+  if (min > 0 && max > 0) return `${min}-${max}岁`
+  if (min > 0) return `不低于${min}岁`
+  if (max > 0) return `不高于${max}岁`
+  return '不限'
+}
+
+// 加载部门+年龄/性别限制配置
+const loadDepartmentAgeGenderRestrictions = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/department-age-gender-restrictions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success && Array.isArray(result.data)) {
+      departmentAgeGenderRestrictions.value = result.data.map((r: any) => ({
+        ...r,
+        departmentIds: Array.isArray(r.departmentIds) ? r.departmentIds.map(String) : [],
+        departmentNames: Array.isArray(r.departmentNames) ? r.departmentNames.map(String) : [],
+        isEnabled: r.isEnabled !== false,
+        ageEnabled: !!r.ageEnabled,
+        ageMin: Number(r.ageMin) || 0,
+        ageMax: Number(r.ageMax) || 0,
+        genderEnabled: !!r.genderEnabled,
+        genders: Array.isArray(r.genders) ? r.genders.map(String) : []
+      }))
+    }
+  } catch (error) {
+    console.error('加载部门年龄性别限制配置失败:', error)
+  }
+}
+
+// 列表开关切换即保存
+const toggleDeptAgeGender = async (row: DepartmentAgeGenderLimit) => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/department-age-gender-restrictions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(departmentAgeGenderRestrictions.value)
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success(row.isEnabled !== false ? '已启用，该部门年龄/性别限制生效' : '已停用，该部门不再拦截')
+    } else {
+      ElMessage.error(result.message || '保存失败')
+      await loadDepartmentAgeGenderRestrictions()
+    }
+  } catch (error) {
+    console.error('切换部门年龄性别限制状态失败:', error)
+    await loadDepartmentAgeGenderRestrictions()
+  }
+}
+
+// 添加部门年龄性别限制（新建）
+const addDeptAgeGender = () => {
+  deptAgeGenderEditIndex.value = -1
+  deptAgeGenderForm.departmentIds = []
+  deptAgeGenderForm.departmentNames = []
+  deptAgeGenderForm.isEnabled = true
+  deptAgeGenderForm.ageEnabled = false
+  deptAgeGenderForm.ageMin = 0
+  deptAgeGenderForm.ageMax = 0
+  deptAgeGenderForm.genderEnabled = false
+  deptAgeGenderForm.genders = []
+  deptAgeGenderForm.reason = ''
+  deptAgeGenderDialogVisible.value = true
+}
+
+// 编辑部门年龄性别限制
+const editDeptAgeGender = (row: DepartmentAgeGenderLimit) => {
+  deptAgeGenderEditIndex.value = departmentAgeGenderRestrictions.value.indexOf(row)
+  deptAgeGenderForm.departmentIds = [...(row.departmentIds || [])]
+  deptAgeGenderForm.departmentNames = [...(row.departmentNames || [])]
+  deptAgeGenderForm.isEnabled = row.isEnabled !== false
+  deptAgeGenderForm.ageEnabled = !!row.ageEnabled
+  deptAgeGenderForm.ageMin = Number(row.ageMin) || 0
+  deptAgeGenderForm.ageMax = Number(row.ageMax) || 0
+  deptAgeGenderForm.genderEnabled = !!row.genderEnabled
+  deptAgeGenderForm.genders = [...(row.genders || [])]
+  deptAgeGenderForm.reason = row.reason || ''
+  deptAgeGenderDialogVisible.value = true
+}
+
+// 保存（按记录下标 upsert 后全量 PUT）
+const saveDeptAgeGender = async () => {
+  if (deptAgeGenderForm.departmentIds.length === 0) {
+    ElMessage.warning('请选择部门')
+    return
+  }
+  const min = Number(deptAgeGenderForm.ageMin) || 0
+  const max = Number(deptAgeGenderForm.ageMax) || 0
+  if (deptAgeGenderForm.ageEnabled) {
+    if (min > 0 && max > 0 && min > max) {
+      ElMessage.warning('最小年龄不能大于最大年龄')
+      return
+    }
+    if (min === 0 && max === 0) {
+      ElMessage.warning('年龄限制已启用，请至少填写一个年龄边界（0 = 不限制该侧）')
+      return
+    }
+  }
+  if (deptAgeGenderForm.genderEnabled && deptAgeGenderForm.genders.length === 0) {
+    ElMessage.warning('性别限制已启用，请至少勾选一个允许的性别（不勾选 = 不限制）')
+    return
+  }
+  try {
+    savingDeptAgeGender.value = true
+    const departmentIds = [...deptAgeGenderForm.departmentIds]
+    const record: DepartmentAgeGenderLimit = {
+      departmentIds,
+      departmentNames: departmentIds.map(id => deptLabel(id)),
+      isEnabled: deptAgeGenderForm.isEnabled,
+      ageEnabled: deptAgeGenderForm.ageEnabled,
+      ageMin: min,
+      ageMax: max,
+      genderEnabled: deptAgeGenderForm.genderEnabled,
+      genders: [...deptAgeGenderForm.genders],
+      reason: deptAgeGenderForm.reason || ''
+    }
+    const list = departmentAgeGenderRestrictions.value.map(r => ({ ...r }))
+    if (deptAgeGenderEditIndex.value >= 0 && deptAgeGenderEditIndex.value < list.length) {
+      list[deptAgeGenderEditIndex.value] = record
+    } else {
+      list.push(record)
+    }
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/department-age-gender-restrictions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(list)
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('部门+年龄/性别下单限制保存成功')
+      deptAgeGenderDialogVisible.value = false
+      await loadDepartmentAgeGenderRestrictions()
+    } else {
+      ElMessage.error(result.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存部门年龄性别限制失败:', error)
+    ElMessage.error('保存失败')
+  } finally {
+    savingDeptAgeGender.value = false
+  }
+}
+
+// 删除部门年龄性别限制
+const deleteDeptAgeGender = async (row: DepartmentAgeGenderLimit) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除部门"${(row.departmentNames || []).join('、')}"的年龄/性别限制配置吗？`,
+      '确认删除',
+      { type: 'warning' }
+    )
+    const list = departmentAgeGenderRestrictions.value.filter(l => l !== row)
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/department-age-gender-restrictions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(list)
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('删除成功')
+      await loadDepartmentAgeGenderRestrictions()
+    } else {
+      ElMessage.error(result.message || '删除失败')
+    }
+  } catch { /* 用户取消 */ }
+}
+
+// ========== 下单提交限制配置（邮费最大金额限制 + 定金截图必填） ==========
+
+interface OrderSubmitRestrictionConfig {
+  shippingFeeLimitEnabled: boolean
+  maxShippingFee: number
+  exemptOverseas: boolean
+  depositScreenshotRequired: boolean
+}
+
+const orderSubmitConfig = reactive<OrderSubmitRestrictionConfig>({
+  shippingFeeLimitEnabled: false,
+  maxShippingFee: 0,
+  exemptOverseas: false,
+  depositScreenshotRequired: false
+})
+const savingOrderSubmit = ref(false)
+
+// 加载下单提交限制配置
+const loadOrderSubmitRestriction = async () => {
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/order-submit-restrictions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await response.json()
+    if (result.success && result.data) {
+      const d = result.data
+      orderSubmitConfig.shippingFeeLimitEnabled = !!d.shippingFeeLimitEnabled
+      orderSubmitConfig.maxShippingFee = Number(d.maxShippingFee) || 0
+      orderSubmitConfig.exemptOverseas = !!d.exemptOverseas
+      orderSubmitConfig.depositScreenshotRequired = !!d.depositScreenshotRequired
+    }
+  } catch (error) {
+    console.error('加载下单提交限制配置失败:', error)
+  }
+}
+
+// 保存下单提交限制配置
+const saveOrderSubmitConfig = async () => {
+  if (orderSubmitConfig.shippingFeeLimitEnabled && !(Number(orderSubmitConfig.maxShippingFee) > 0)) {
+    ElMessage.warning('启用邮费限制时，请填写大于 0 的最大邮费金额')
+    return
+  }
+  try {
+    savingOrderSubmit.value = true
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch('/api/v1/system/order-submit-restrictions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(orderSubmitConfig)
+    })
+    const result = await response.json()
+    if (result.success) {
+      ElMessage.success('下单提交限制配置保存成功')
+    } else {
+      ElMessage.error(result.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存下单提交限制配置失败:', error)
+    ElMessage.error('保存失败')
+  } finally {
+    savingOrderSubmit.value = false
+  }
 }
 
 // 初始化支付方式表格拖拽排序
@@ -1994,6 +2491,8 @@ onMounted(async () => {
   loadDepartmentList()
   loadDepartmentLimits()
   loadDepartmentRegionRestrictions()
+  loadDepartmentAgeGenderRestrictions()
+  loadOrderSubmitRestriction()
   await loadPaymentMethods()
   initPaymentMethodSortable()
   loadVirtualSettings()

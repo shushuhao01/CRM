@@ -81,23 +81,17 @@
       </div>
     </div>
 
-    <!-- 快速筛选器 -->
-    <div class="quick-filter-container">
-      <div class="quick-filters">
-        <span class="filter-label">快速筛选：</span>
-        <div class="filter-buttons">
-          <el-button
-            v-for="filter in dateFilters"
-            :key="filter.value"
-            :type="currentDateFilter === filter.value ? 'primary' : ''"
-            :plain="currentDateFilter !== filter.value"
-            round
-            size="default"
-            @click="handleQuickFilter(filter.value)"
-          >
-            {{ filter.label }}
-          </el-button>
-        </div>
+    <!-- 快捷日期筛选 -->
+    <div class="quick-filters">
+      <div class="quick-btn-group">
+        <button
+          v-for="filter in dateFilters"
+          :key="filter.value"
+          :class="['quick-btn', { active: currentDateFilter === filter.value }]"
+          @click="handleQuickFilter(filter.value)"
+        >
+          {{ filter.label }}
+        </button>
       </div>
     </div>
 
@@ -121,6 +115,7 @@
           <el-date-picker
             v-model="dateRange"
             type="daterange"
+            unlink-panels
             range-separator="至"
             start-placeholder="开始"
             end-placeholder="结束"
@@ -888,13 +883,13 @@ const ownerOptions = computed(() => {
 
 // 日期筛选选项
 const dateFilters = [
-  { label: '全部', value: 'all' },  // 🔥 修复：全部放在第一位
   { label: '今日', value: 'today' },
   { label: '昨日', value: 'yesterday' },
   { label: '本周', value: 'thisWeek' },
-  { label: '近30天', value: 'last30Days' },
   { label: '本月', value: 'thisMonth' },
-  { label: '今年', value: 'thisYear' }
+  { label: '上月', value: 'lastMonth' },
+  { label: '今年', value: 'thisYear' },
+  { label: '全部', value: 'all' }
 ]
 
 // 导航标签
@@ -2278,10 +2273,40 @@ onMounted(async () => {
   color: #1f2937;
 }
 
-.quick-filter-container {
-  background: transparent;
-  padding: 16px 0;
+.quick-filters {
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
   margin-bottom: 16px;
+}
+
+.quick-btn-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.quick-btn {
+  padding: 8px 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  color: #606266;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-btn:hover {
+  color: #409eff;
+  border-color: #c6e2ff;
+  background: #ecf5ff;
+}
+
+.quick-btn.active {
+  color: #fff;
+  background: #409eff;
+  border-color: #409eff;
 }
 
 .filter-card {
@@ -2291,54 +2316,6 @@ onMounted(async () => {
 .filter-content {
   padding: 20px 24px;
   width: 100%;
-}
-
-.quick-filters {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 0;
-  flex-wrap: wrap;
-}
-
-.filter-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
-  white-space: nowrap;
-}
-
-.filter-buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.quick-filter-container .filter-buttons .el-button {
-  border-radius: 20px;
-  border: 1px solid #e5e7eb;
-  background: white;
-  color: #6b7280;
-  font-weight: 500;
-  padding: 6px 16px;
-  transition: all 0.2s ease;
-}
-
-.quick-filter-container .filter-buttons .el-button:hover {
-  border-color: #3b82f6;
-  color: #3b82f6;
-  background: #f8fafc;
-}
-
-.quick-filter-container .filter-buttons .el-button--primary {
-  background: #3b82f6;
-  border-color: #3b82f6;
-  color: white;
-}
-
-.quick-filter-container .filter-buttons .el-button--primary:hover {
-  background: #2563eb;
-  border-color: #2563eb;
 }
 
 .search-filters {

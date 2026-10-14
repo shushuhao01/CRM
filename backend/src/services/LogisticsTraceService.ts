@@ -674,9 +674,15 @@ class LogisticsTraceService {
             log.info('[顺丰开放平台API] 第一条轨迹:', result.traces[0]);
           }
 
-          // 设置最新状态 (路由按时间倒序，第一条是最新的)
+          // 设置最新状态（按时间排序取最新一条，不依赖接口返回顺序）
           if (result.traces.length > 0) {
-            const latestOpcode = result.traces[0].status;
+            const sortedTraces = [...result.traces].sort((a, b) => {
+              const ta = new Date(a.time).getTime();
+              const tb = new Date(b.time).getTime();
+              return (isNaN(ta) ? 0 : ta) - (isNaN(tb) ? 0 : tb);
+            });
+            const latestTrace = sortedTraces[sortedTraces.length - 1];
+            const latestOpcode = String(latestTrace.status || '');
             const statusInfo = this.mapSFStatus(latestOpcode);
             result.status = statusInfo.status;
             result.statusText = statusInfo.text;

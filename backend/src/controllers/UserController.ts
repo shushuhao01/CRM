@@ -156,10 +156,10 @@ export class UserController {
       throw new BusinessError('该账号已离职，无法登录', 'ACCOUNT_RESIGNED');
     }
 
-    // 验证授权IP
-    const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
-    // 处理IPv6格式的本地地址
-    const normalizedIp = clientIp.replace(/^::ffff:/, '');
+    // 验证授权IP（优先取 X-Real-IP / X-Forwarded-For，避免反代只设 X-Real-IP 时 req.ip 解析成回环导致白名单失效）
+    const clientIp = getClientIp(req);
+    // getClientIp 已处理 IPv6 映射（::ffff:）与回环（::1），此处保持同值
+    const normalizedIp = clientIp;
 
     // 🔥 系统级IP白名单（安全策略）：白名单非空时校验登录IP（回环地址始终放行）
     if (securityPolicy.ipWhitelist && !securityPolicyService.isIpAllowed(clientIp, securityPolicy.ipWhitelist)) {

@@ -52,6 +52,9 @@ export const DEFAULT_SECURITY_POLICY: Omit<SecurityPolicy, 'source'> = {
 /** 策略缓存 TTL（秒）：配置修改后最多延迟 60 秒生效 */
 const POLICY_CACHE_TTL = 60;
 
+/** 会话超时上限：7 天（10080 分钟），超过按上限处理 */
+export const MAX_SESSION_TIMEOUT_MINUTES = 7 * 24 * 60;
+
 const toNumber = (v: unknown, fallback: number): number => {
   const n = Number(v);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
@@ -188,7 +191,7 @@ class SecurityPolicyService {
       loginFailLock: toBoolean(raw.loginFailLock, d.loginFailLock),
       maxLoginFails: toNumber(raw.maxLoginFails, d.maxLoginFails) || d.maxLoginFails,
       lockDuration: toNumber(raw.lockDuration, d.lockDuration),
-      sessionTimeout: toNumber(raw.sessionTimeout, d.sessionTimeout),
+      sessionTimeout: Math.min(toNumber(raw.sessionTimeout, d.sessionTimeout), MAX_SESSION_TIMEOUT_MINUTES),
       forceHttps: toBoolean(raw.forceHttps, d.forceHttps),
       ipWhitelist: typeof raw.ipWhitelist === 'string' ? raw.ipWhitelist : d.ipWhitelist
     };

@@ -59,6 +59,9 @@ export class Order {
   @Column({ name: 'deposit_amount', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '定金金额' })
   depositAmount: number;
 
+  @Column({ name: 'shipping_fee', type: 'decimal', precision: 10, scale: 2, default: 0, comment: '邮费金额（客户自付）' })
+  shippingFee?: number;
+
   @Column({ name: 'deposit_screenshots', type: 'json', nullable: true, comment: '定金截图' })
   depositScreenshots?: string[];
 

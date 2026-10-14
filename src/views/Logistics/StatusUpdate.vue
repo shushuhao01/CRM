@@ -86,18 +86,18 @@
       </el-row>
     </div>
 
-    <!-- 快捷筛选 -->
+    <!-- 快捷日期筛选 -->
     <div class="quick-filters">
-      <el-button
-        v-for="filter in quickFilters"
-        :key="filter.value"
-        :type="activeQuickFilter === filter.value ? 'primary' : ''"
-        @click="handleQuickFilter(filter.value)"
-        class="filter-button"
-        round
-      >
-        {{ filter.label }}
-      </el-button>
+      <div class="quick-btn-group">
+        <button
+          v-for="filter in quickFilters"
+          :key="filter.value"
+          :class="['quick-btn', { active: activeQuickFilter === filter.value }]"
+          @click="handleQuickFilter(filter.value)"
+        >
+          {{ filter.label }}
+        </button>
+      </div>
     </div>
 
     <!-- 搜索和筛选区域 -->
@@ -106,6 +106,7 @@
         <el-date-picker
           v-model="dateRange"
           type="daterange"
+          unlink-panels
           range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
@@ -567,11 +568,7 @@ const summaryData = reactive({
 const quickFilters = [
   { label: '今日', value: 'today' },
   { label: '昨日', value: 'yesterday' },
-  { label: '3天前', value: '3days' },
-  { label: '5天前', value: '5days' },
-  { label: '10天前', value: '10days' },
   { label: '本周', value: 'week' },
-  { label: '30天', value: '30days' },
   { label: '本月', value: 'thisMonth' },
   { label: '上月', value: 'lastMonth' },
   { label: '今年', value: 'year' },
@@ -611,32 +608,9 @@ const handleQuickFilter = (value: string) => {
       const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
       dateRange.value = [formatDate(yesterday), formatDate(yesterday)]
       break
-    case '3days':
-      // 3天前：筛选发货日期在3天前及更早的订单（需要关注的老订单）
-      const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000)
-      // 开始日期设为90天前，覆盖大部分需要关注的订单
-      const ninetyDaysAgo3 = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000)
-      dateRange.value = [formatDate(ninetyDaysAgo3), formatDate(threeDaysAgo)]
-      break
-    case '5days':
-      // 5天前：筛选发货日期在5天前及更早的订单
-      const fiveDaysAgo = new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000)
-      const ninetyDaysAgo5 = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000)
-      dateRange.value = [formatDate(ninetyDaysAgo5), formatDate(fiveDaysAgo)]
-      break
-    case '10days':
-      // 10天前：筛选发货日期在10天前及更早的订单
-      const tenDaysAgo = new Date(today.getTime() - 10 * 24 * 60 * 60 * 1000)
-      const ninetyDaysAgo10 = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000)
-      dateRange.value = [formatDate(ninetyDaysAgo10), formatDate(tenDaysAgo)]
-      break
     case 'week':
       const weekStart = new Date(today.getTime() - (today.getDay() - 1) * 24 * 60 * 60 * 1000)
       dateRange.value = [formatDate(weekStart), formatDate(today)]
-      break
-    case '30days':
-      const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
-      dateRange.value = [formatDate(thirtyDaysAgo), formatDate(today)]
       break
     case 'thisMonth':
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -997,7 +971,7 @@ const loadData = async (showMessage = false) => {
         amount: order.totalAmount,
         totalAmount: order.totalAmount,
         deposit: order.depositAmount || 0,
-        codAmount: order.collectAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+        codAmount: order.collectAmount || (order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0),
         paymentMethod: order.paymentMethod || '',
         trackingNo,
         expressNo: trackingNo,
@@ -1521,23 +1495,39 @@ watch([dateRange, statusFilter, orderStatusFilter, searchKeyword], () => {
 }
 
 .quick-filters {
-  margin-bottom: 20px;
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.quick-btn-group {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
-.filter-button {
-  margin: 0;
-  border-radius: 20px;
-  padding: 8px 20px;
-  font-size: 14px;
-  transition: all 0.3s ease;
+.quick-btn {
+  padding: 8px 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  color: #606266;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.filter-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+.quick-btn:hover {
+  color: #409eff;
+  border-color: #c6e2ff;
+  background: #ecf5ff;
+}
+
+.quick-btn.active {
+  color: #fff;
+  background: #409eff;
+  border-color: #409eff;
 }
 
 .search-filters {

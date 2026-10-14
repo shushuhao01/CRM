@@ -27,7 +27,7 @@ import {
 import path from 'path';
 import fs from 'fs';
 import { isOSSMode, uploadToOSS } from '../../services/OSSUploadService';
-import { securityPolicyService } from '../../services/SecurityPolicyService';
+import { securityPolicyService, MAX_SESSION_TIMEOUT_MINUTES } from '../../services/SecurityPolicyService';
 
 import { log } from '../../config/logger';
 const departmentController = new DepartmentController();
@@ -608,6 +608,13 @@ router.get('/security-settings', authenticateToken, requireAdmin, async (_req: R
 router.put('/security-settings', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const settings = req.body;
+    // 🔥 会话超时上限 7 天（10080 分钟）：超出则按上限落库，防止绕过前端写入超大值
+    if (settings.sessionTimeout !== undefined && settings.sessionTimeout !== null) {
+      const n = Number(settings.sessionTimeout);
+      if (Number.isFinite(n)) {
+        settings.sessionTimeout = Math.min(Math.max(0, Math.floor(n)), MAX_SESSION_TIMEOUT_MINUTES);
+      }
+    }
     const configItems = [
       { key: 'passwordMinLength', type: 'number' as const, desc: '密码最小长度' },
       { key: 'passwordComplexity', type: 'json' as const, desc: '密码复杂度要求' },

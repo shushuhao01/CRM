@@ -200,6 +200,56 @@
       </div>
     </el-card>
 
+    <!-- 年龄/性别限制配置（限制年龄/性别客户创建客户资料，仅作用于建户） -->
+    <el-card class="config-card">
+      <template #header>
+        <div class="card-header">
+          <span>年龄/性别限制配置</span>
+          <el-tag type="warning" size="small">仅作用于新增客户建户</el-tag>
+        </div>
+      </template>
+
+      <p class="form-tip">
+        仅作用于「新增客户」建户校验，与订单配置中的下单限制相互独立。年龄或性别未填/未知时不拦截。
+      </p>
+
+      <!-- 年龄限制 -->
+      <div class="ag-section">
+        <div class="ag-section-header">
+          <el-switch v-model="ageGenderCustomer.ageEnabled" active-text="启用年龄限制" />
+        </div>
+        <div v-if="ageGenderCustomer.ageEnabled" class="ag-row">
+          <span class="ag-label">允许创建的年龄：</span>
+          <el-input-number v-model="ageGenderCustomer.ageMin" :min="0" :max="120" controls-position="right" />
+          <span class="ag-sep">岁 至</span>
+          <el-input-number v-model="ageGenderCustomer.ageMax" :min="0" :max="120" controls-position="right" />
+          <span class="ag-sep">岁</span>
+          <span class="form-tip ag-inline-tip">（0 表示该侧不限制；两侧都为 0 表示不限制）</span>
+        </div>
+      </div>
+
+      <el-divider />
+
+      <!-- 性别限制 -->
+      <div class="ag-section">
+        <div class="ag-section-header">
+          <el-switch v-model="ageGenderCustomer.genderEnabled" active-text="启用性别限制" />
+        </div>
+        <div v-if="ageGenderCustomer.genderEnabled" class="ag-row">
+          <span class="ag-label">允许创建的性别：</span>
+          <el-checkbox-group v-model="ageGenderCustomer.genders">
+            <el-checkbox label="male">男</el-checkbox>
+            <el-checkbox label="female">女</el-checkbox>
+          </el-checkbox-group>
+          <span class="form-tip ag-inline-tip">（不勾选表示不限制）</span>
+        </div>
+      </div>
+
+      <div class="region-save-actions">
+        <el-button type="primary" :loading="ageGenderSaving" @click="saveAgeGenderCustomer">保存年龄/性别限制配置</el-button>
+      </div>
+    </el-card>
+
     <!-- 保存按钮 -->
     <div class="save-actions">
       <el-button size="large" @click="resetConfig">重置配置</el-button>
@@ -730,6 +780,74 @@ const saveRegionRestrictionsAll = async () => {
   }
 }
 
+// ========== 年龄/性别限制配置（限制年龄/性别客户创建客户资料，仅作用于建户） ==========
+
+interface AgeGenderCustomerConfig {
+  ageEnabled: boolean
+  ageMin: number
+  ageMax: number
+  genderEnabled: boolean
+  genders: string[]
+}
+
+const ageGenderCustomer = ref<AgeGenderCustomerConfig>({
+  ageEnabled: false,
+  ageMin: 0,
+  ageMax: 0,
+  genderEnabled: false,
+  genders: []
+})
+const ageGenderSaving = ref(false)
+
+const loadAgeGenderCustomer = async () => {
+  const token = localStorage.getItem('auth_token')
+  try {
+    const res = await fetch('/api/v1/system/age-gender-restrictions/customer', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const result = await res.json()
+    if (result.success && result.data) {
+      ageGenderCustomer.value = {
+        ageEnabled: !!result.data.ageEnabled,
+        ageMin: Number(result.data.ageMin) || 0,
+        ageMax: Number(result.data.ageMax) || 0,
+        genderEnabled: !!result.data.genderEnabled,
+        genders: Array.isArray(result.data.genders) ? result.data.genders : []
+      }
+    }
+  } catch (error) {
+    console.error('[客户设置] 加载年龄/性别限制配置失败:', error)
+  }
+}
+
+const saveAgeGenderCustomer = async () => {
+  const cfg = ageGenderCustomer.value
+  if (cfg.ageEnabled && cfg.ageMin > 0 && cfg.ageMax > 0 && cfg.ageMin > cfg.ageMax) {
+    ElMessage.error('年龄范围有误：最小值不能大于最大值')
+    return
+  }
+  try {
+    ageGenderSaving.value = true
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch('/api/v1/system/age-gender-restrictions/customer', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(cfg)
+    })
+    const result = await res.json()
+    if (result.success) {
+      ElMessage.success('年龄/性别限制配置保存成功，已全局生效')
+    } else {
+      ElMessage.error(result.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('[客户设置] 保存年龄/性别限制配置失败:', error)
+    ElMessage.error('保存失败，请检查网络连接')
+  } finally {
+    ageGenderSaving.value = false
+  }
+}
+
 // 重置配置
 const resetConfig = async () => {
   try {
@@ -744,6 +862,7 @@ onMounted(async () => {
   await fieldConfigStore.loadConfig()
   initLocalConfig()
   loadRegionRestrictions()
+  loadAgeGenderCustomer()
   console.log('[客户设置] 页面初始化完成，自定义字段数量:', localConfig.customFields.length)
 })
 </script>
@@ -841,6 +960,37 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   margin-top: 8px;
+}
+
+/* 年龄/性别限制配置 */
+.ag-section {
+  margin-bottom: 8px;
+}
+
+.ag-section-header {
+  margin-bottom: 8px;
+}
+
+.ag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 0 4px 4px;
+}
+
+.ag-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.ag-sep {
+  font-size: 14px;
+  color: var(--el-text-color-regular, #606266);
+}
+
+.ag-inline-tip {
+  margin: 0;
 }
 </style>
 

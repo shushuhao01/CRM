@@ -22,6 +22,15 @@ export interface OrderListResponse {
   pageSize: number
 }
 
+// 取消申请订单列表响应接口（待审核 / 已审核，均含分页信息）
+export interface CancelOrderListResponse {
+  list: Order[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
 // 提审订单参数接口
 export interface OrderSubmitAuditParams {
   operatorId: string
@@ -120,7 +129,7 @@ export const orderApi = {
 
   // 获取待审核的取消订单列表（支持分页）
   getPendingCancelOrders: (params?: { page?: number; pageSize?: number }) =>
-    api.get<Order[]>(API_ENDPOINTS.ORDERS.PENDING_CANCEL, { params }),
+    api.get<CancelOrderListResponse>(API_ENDPOINTS.ORDERS.PENDING_CANCEL, { params }),
 
   // 获取待审核取消订单数量（since：上次查看时间，用于区分新增）
   // 🔥 showError: false —— 旧版后端可能没有该端点（404），徽标统计非关键，静默失败避免全局弹窗
@@ -136,7 +145,7 @@ export const orderApi = {
 
   // 获取已审核的取消订单列表（支持分页）
   getAuditedCancelOrders: (params?: { page?: number; pageSize?: number }) =>
-    api.get<Order[]>(API_ENDPOINTS.ORDERS.AUDITED_CANCEL, { params }),
+    api.get<CancelOrderListResponse>(API_ENDPOINTS.ORDERS.AUDITED_CANCEL, { params }),
 
   // 获取订单统计数据
   getStatistics: () =>

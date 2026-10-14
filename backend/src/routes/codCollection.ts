@@ -139,11 +139,11 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     }
     const needCodOrders = await orderRepo.find({
       where: needCodWhere,
-      select: ['totalAmount', 'depositAmount']
+      select: ['totalAmount', 'depositAmount', 'shippingFee']
     });
     const totalNeedCod = needCodOrders.reduce((sum, o) => {
-      // 代收金额 = 订单总额 - 定金
-      const codAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      // 代收金额 = 订单总额 + 邮费 - 定金
+      const codAmount = (Number(o.totalAmount) || 0) + (Number(o.shippingFee) || 0) - (Number(o.depositAmount) || 0);
       return sum + codAmount;
     }, 0);
 
@@ -157,11 +157,11 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     }
     const cancelledOrders = await orderRepo.find({
       where: cancelledWhere,
-      select: ['codAmount', 'totalAmount', 'depositAmount']
+      select: ['codAmount', 'totalAmount', 'depositAmount', 'shippingFee']
     });
     const totalCancelledCod = cancelledOrders.reduce((sum, o) => {
       // 原本需要代收的金额
-      const originalCodAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      const originalCodAmount = (Number(o.totalAmount) || 0) + (Number(o.shippingFee) || 0) - (Number(o.depositAmount) || 0);
       // 修改后的代收金额
       const modifiedCodAmount = (o.codAmount !== null && o.codAmount !== undefined) ? Number(o.codAmount) : 0;
       // 已经收取的金额 = 原本需要代收 - 修改后需要代收
@@ -191,11 +191,11 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
     }
     const pendingOrders = await orderRepo.find({
       where: pendingWhere,
-      select: ['totalAmount', 'depositAmount']
+      select: ['totalAmount', 'depositAmount', 'shippingFee']
     });
     const totalPendingCod = pendingOrders.reduce((sum, o) => {
-      // 待处理订单，代收金额 = 订单总额 - 定金
-      const codAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      // 待处理订单，代收金额 = 订单总额 + 邮费 - 定金
+      const codAmount = (Number(o.totalAmount) || 0) + (Number(o.shippingFee) || 0) - (Number(o.depositAmount) || 0);
       return sum + codAmount;
     }, 0);
 
@@ -248,11 +248,11 @@ router.get('/stats', authenticateToken, async (req: Request, res: Response) => {
 
     // 无需代收数量 + 全部数量（一次查询获取两项，减少数据库查询）
     const allStatsOrders = await buildCountQb()
-      .select(['o.id', 'o.totalAmount', 'o.depositAmount'])
+      .select(['o.id', 'o.totalAmount', 'o.depositAmount', 'o.shippingFee'])
       .getMany();
     const allCount = allStatsOrders.length;
     const zeroCount = allStatsOrders.filter((o: Order) => {
-      const originalCodAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      const originalCodAmount = (Number(o.totalAmount) || 0) + (Number(o.shippingFee) || 0) - (Number(o.depositAmount) || 0);
       return originalCodAmount === 0;
     }).length;
 
@@ -434,7 +434,7 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
     const list = orders.map(o => {
       // 🔥 修复：使用数据库中的实际代收金额（如果有修改过）
       // 如果 codAmount 有值，使用它；否则使用原始计算值
-      const originalCodAmount = (Number(o.totalAmount) || 0) - (Number(o.depositAmount) || 0);
+      const originalCodAmount = (Number(o.totalAmount) || 0) + (Number(o.shippingFee) || 0) - (Number(o.depositAmount) || 0);
       const currentCodAmount = (o.codAmount !== null && o.codAmount !== undefined)
         ? Number(o.codAmount)
         : originalCodAmount;
@@ -453,6 +453,7 @@ router.get('/list', authenticateToken, async (req: Request, res: Response) => {
         totalAmount: o.totalAmount,
         finalAmount: o.finalAmount,
         depositAmount: o.depositAmount,
+        shippingFee: Number(o.shippingFee) || 0,
         codAmount: currentCodAmount,  // 🔥 使用当前实际代收金额
         codStatus: o.codStatus || 'pending',
         codReturnedAmount: o.codReturnedAmount || 0,
@@ -501,7 +502,7 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
     }
 
     // 🔥 修复：使用数据库中的实际代收金额（如果有修改过）
-    const originalCodAmount = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+    const originalCodAmount = (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0);
     const currentCodAmount = (order.codAmount !== null && order.codAmount !== undefined)
       ? Number(order.codAmount)
       : originalCodAmount;
@@ -518,6 +519,7 @@ router.get('/detail/:id', authenticateToken, async (req: Request, res: Response)
         totalAmount: order.totalAmount,
         finalAmount: order.finalAmount,
         depositAmount: order.depositAmount,
+        shippingFee: Number(order.shippingFee) || 0,
         codAmount: currentCodAmount,  // 🔥 使用当前实际代收金额
         codStatus: order.codStatus || 'pending',
         codReturnedAmount: order.codReturnedAmount || 0,
@@ -585,8 +587,8 @@ router.put('/update-cod/:id', authenticateToken, async (req: Request, res: Respo
       return res.status(400).json({ success: false, message: '订单已改为0元代收，不能再次修改' });
     }
 
-    // 计算原代收金额 = 订单总额 - 定金
-    const originalCodAmount = (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+    // 计算原代收金额 = 订单总额 + 邮费 - 定金
+    const originalCodAmount = (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0);
 
     // 保存旧值用于日志
     const oldCodAmount = (order.codAmount !== null && order.codAmount !== undefined) ? Number(order.codAmount) : originalCodAmount;
@@ -668,7 +670,7 @@ router.put('/mark-returned/:id', authenticateToken, async (req: Request, res: Re
     // 如果用户修改过代收金额，使用修改后的值；否则使用计算值
     const defaultCodAmount = (order.codAmount !== null && order.codAmount !== undefined)
       ? Number(order.codAmount)
-      : (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+      : (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0);
 
     // 🔥 业务规则1：如果代收金额为0，不能标记返款
     if (defaultCodAmount === 0) {
@@ -797,7 +799,7 @@ router.put('/batch-update-cod', authenticateToken, async (req: Request, res: Res
 
     // 记录操作日志
     for (const order of orders) {
-      const oldCodAmount = (order.codAmount !== null && order.codAmount !== undefined) ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0));
+      const oldCodAmount = (order.codAmount !== null && order.codAmount !== undefined) ? Number(order.codAmount) : ((Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0));
       await logCodOperation({
         orderId: order.id,
         orderNumber: order.orderNumber,
@@ -842,7 +844,7 @@ router.put('/batch-mark-returned', authenticateToken, async (req: Request, res: 
       // 如果用户修改过代收金额，使用修改后的值；否则使用计算值
       const codAmount = (order.codAmount !== null && order.codAmount !== undefined)
         ? Number(order.codAmount)
-        : (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0);
+        : (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0);
 
       // 标记返款（代收金额不变）
       order.codStatus = 'returned';

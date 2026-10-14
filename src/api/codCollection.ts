@@ -21,6 +21,7 @@ export interface CodOrder {
   totalAmount: number
   finalAmount: number
   depositAmount: number
+  shippingFee: number  // 邮费金额（客户自付），计入应付总额与代收金额
   codAmount: number  // 当前实际代收金额（如果修改过则为修改后的值，否则为原始计算值）
   codStatus: string
   codReturnedAmount: number

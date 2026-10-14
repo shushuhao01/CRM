@@ -314,6 +314,11 @@ class WebSocketService {
       this.emitEvent('call:ended', data)
     })
 
+    // 🔥 看板数据变更广播（订单/客户/业绩/物流写操作触发前端刷新）
+    this.socket.on('dashboard:data_changed', (data: any) => {
+      this.emitEvent('dashboard:data_changed', data)
+    })
+
     this.socket.on('pong', () => {
       // 心跳正常
     })

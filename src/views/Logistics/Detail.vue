@@ -830,8 +830,11 @@ const loadTrackingHistory = async (order?: any) => {
             type: index === 0 ? 'success' : 'primary'
           }))
 
-          // 🔥 同步更新物流状态
-          if (response.data.status && response.data.status !== 'error' && response.data.status !== 'need_phone_verify') {
+          // 🔥 修复：以「最新轨迹」推导物流状态，避免陈旧状态（已签收仍显示已揽收）
+          const detectedStatus = detectLogisticsStatusFromTrace(sortedTraces[0])
+          if (detectedStatus) {
+            logisticsInfo.status = detectedStatus
+          } else if (response.data.status && response.data.status !== 'error' && response.data.status !== 'need_phone_verify') {
             logisticsInfo.status = response.data.status
           }
           if (response.data.estimatedDeliveryTime) {
@@ -893,6 +896,38 @@ const detectStatusTextFromDesc = (desc: string): string => {
   if (d.includes('退回') || d.includes('退件')) return '退回'
   if (d.includes('异常') || d.includes('问题件')) return '异常'
   return '物流动态'
+}
+
+/**
+ * 🔥 根据「最新轨迹」推导物流状态code（优先操作码映射，其次中文描述）
+ */
+const detectLogisticsStatusFromTrace = (trace: any): string => {
+  if (!trace) return ''
+  const opCodeMap: Record<string, string> = {
+    '50': 'picked_up',
+    '30': 'in_transit',
+    '31': 'in_transit',
+    '33': 'in_transit',
+    '36': 'out_for_delivery',
+    '44': 'out_for_delivery',
+    '80': 'delivered',
+    '8000': 'delivered',
+    '99': 'exception',
+    '648': 'exception'
+  }
+  const opCode = trace.status != null ? String(trace.status) : ''
+  if (opCodeMap[opCode]) return opCodeMap[opCode]
+
+  const d = String(trace.description || '')
+  if (!d) return ''
+  if (d.includes('签收') || d.includes('已送达') || d.includes('代收')) return 'delivered'
+  if (d.includes('拒收') || d.includes('拒签')) return 'rejected'
+  if (d.includes('退回') || d.includes('退件')) return 'returned'
+  if (d.includes('派送') || d.includes('派件') || d.includes('投递') || d.includes('送货')) return 'out_for_delivery'
+  if (d.includes('异常') || d.includes('问题件')) return 'exception'
+  if (d.includes('揽收') || d.includes('收件') || d.includes('已收取')) return 'picked_up'
+  if (d.includes('到达') || d.includes('运输') || d.includes('转运') || d.includes('发往') || d.includes('离开')) return 'in_transit'
+  return ''
 }
 
 /**

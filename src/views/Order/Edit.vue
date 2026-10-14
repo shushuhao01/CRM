@@ -424,11 +424,22 @@
               <el-input-number
                 v-model="orderForm.depositAmount"
                 :min="0"
-                :max="orderForm.totalAmount || 0"
+                :max="payableAmount"
                 :precision="2"
                 placeholder="定金金额"
                 class="field-input"
                 @change="calculateCollectAmount"
+              />
+            </div>
+            <div class="amount-field">
+              <span class="field-label">邮费</span>
+              <el-input-number
+                v-model="orderForm.shippingFee"
+                :min="0"
+                :precision="2"
+                placeholder="客户自付邮费"
+                class="field-input"
+                @change="handleShippingFeeChange"
               />
             </div>
             <div class="amount-field">
@@ -458,8 +469,12 @@
             </div>
           </div>
 
-          <!-- 第二行：代收金额、优惠金额、定金截图 -->
+          <!-- 第二行：应付总额、代收金额、优惠金额、定金截图 -->
           <div class="amount-row">
+            <div class="amount-field">
+              <span class="field-label">应付总额</span>
+              <span class="field-amount payable">¥{{ payableAmount.toFixed(2) }}</span>
+            </div>
             <div class="amount-field">
               <span class="field-label">代收金额</span>
               <span class="field-amount collect">¥{{ collectAmount.toFixed(2) }}</span>
@@ -740,6 +755,14 @@
                 <span class="label">定金</span>
                 <span class="value">¥{{ (orderForm.depositAmount || 0).toFixed(2) }}</span>
               </div>
+              <div class="amount-item highlight shipping-amount">
+                <span class="label">邮费</span>
+                <span class="value">¥{{ (orderForm.shippingFee || 0).toFixed(2) }}</span>
+              </div>
+              <div class="amount-item highlight payable-amount">
+                <span class="label">应付总额</span>
+                <span class="value">¥{{ payableAmount.toFixed(2) }}</span>
+              </div>
               <div class="amount-item highlight collect-amount">
                 <span class="label">代收金额</span>
                 <span class="value">¥{{ collectAmount.toFixed(2) }}</span>
@@ -904,6 +927,7 @@ const orderForm = reactive({
   subtotal: 0,
   totalAmount: 0,
   depositAmount: 0,
+  shippingFee: 0,
   collectedAmount: 0,
   discountAmount: 0,
   depositScreenshot: '',
@@ -1002,8 +1026,13 @@ const subtotal = computed(() => {
   }, 0)
 })
 
+// 应付总额 = 订单总额 + 邮费
+const payableAmount = computed(() => {
+  return (orderForm.totalAmount || 0) + (orderForm.shippingFee || 0)
+})
+
 const collectAmount = computed(() => {
-  return (orderForm.totalAmount || 0) - (orderForm.depositAmount || 0)
+  return payableAmount.value - (orderForm.depositAmount || 0)
 })
 
 const discountAmount = computed(() => {
@@ -1235,6 +1264,7 @@ const loadOrderData = async () => {
         subtotal: Number(order.subtotal) || 0,
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
+        shippingFee: Number(order.shippingFee) || 0,
         collectedAmount: Number(order.collectedAmount) || 0,
         discountAmount: Number(order.discountAmount) || 0,
         depositScreenshot: order.depositScreenshot || '',
@@ -1519,20 +1549,29 @@ const handleTotalAmountChange = (value: number | null) => {
     return
   }
 
-  // 如果定金大于新的订单总额，自动调整定金
-  if ((orderForm.depositAmount || 0) > value) {
-    orderForm.depositAmount = value
-    ElMessage.info('定金已自动调整为订单总额')
+  // 如果定金大于新的应付总额，自动调整定金
+  if ((orderForm.depositAmount || 0) > value + (orderForm.shippingFee || 0)) {
+    orderForm.depositAmount = value + (orderForm.shippingFee || 0)
+    ElMessage.info('定金已自动调整为应付总额')
   }
 
   orderForm.totalAmount = value
   calculateCollectAmount()
 }
 
+// 处理邮费变更
+const handleShippingFeeChange = () => {
+  if ((orderForm.depositAmount || 0) > payableAmount.value) {
+    orderForm.depositAmount = payableAmount.value
+    ElMessage.info('定金已自动调整为应付总额')
+  }
+  calculateCollectAmount()
+}
+
 // 计算代收金额
 const calculateCollectAmount = () => {
-  // 代收金额 = 订单总额 - 定金
-  orderForm.collectedAmount = (orderForm.totalAmount || 0) - (orderForm.depositAmount || 0)
+  // 代收金额 = 订单总额 + 邮费 - 定金
+  orderForm.collectedAmount = (orderForm.totalAmount || 0) + (orderForm.shippingFee || 0) - (orderForm.depositAmount || 0)
 }
 
 // 重置到商品小计
@@ -1916,6 +1955,7 @@ const confirmSaveOrder = async () => {
       products: formattedProducts,
       totalAmount: orderForm.totalAmount,
       depositAmount: orderForm.depositAmount,
+      shippingFee: orderForm.shippingFee,
       discountAmount: discountAmount.value,
       // 截图
       depositScreenshots: depositScreenshots.value,
@@ -2410,6 +2450,10 @@ const handleConfirmDialogClose = () => {
 
 .field-amount.collect {
   color: #7c3aed;
+}
+
+.field-amount.payable {
+  color: #2563eb;
 }
 
 .field-amount.discount {

@@ -136,6 +136,12 @@ router.get('/list', async (req: Request, res: Response) => {
           startDate = new Date(now.getFullYear(), now.getMonth(), 1);
           queryBuilder.andWhere(`${dateExpr} >= :startDate`, { startDate });
           break;
+        case 'lastMonth': {
+          const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
+          queryBuilder.andWhere(`${dateExpr} >= :startDate AND ${dateExpr} < :endDate`, { startDate: lastMonthStart, endDate: lastMonthEnd });
+          break;
+        }
         case 'thisYear':
           startDate = new Date(now.getFullYear(), 0, 1);
           queryBuilder.andWhere(`${dateExpr} >= :startDate`, { startDate });

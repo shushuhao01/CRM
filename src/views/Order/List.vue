@@ -161,6 +161,7 @@
                   <el-date-picker
                     v-model="searchForm.dateRange"
                     type="daterange"
+                    unlink-panels
                     range-separator="至"
                     start-placeholder="开始日期"
                     end-placeholder="结束日期"
@@ -388,17 +389,32 @@
       <!-- 代收金额列 -->
       <template #column-collectAmount="{ row }">
         <div class="cod-amount-cell">
-          <!-- 显示当前应到付金额（总额-定金） -->
-          <span class="amount-text">¥{{ ((row.totalAmount || 0) - (row.depositAmount || 0)).toLocaleString() }}</span>
+          <!-- 显示当前应到付金额（订单总额 + 邮费 - 定金） -->
+          <span class="amount-text">¥{{ ((row.totalAmount || 0) + (row.shippingFee || 0) - (row.depositAmount || 0)).toLocaleString() }}</span>
           <!-- 🔥 判断是否通过代收管理修改过代收金额：codAmount不等于当前应收金额，且未返款 -->
           <el-tooltip
-            v-if="row.codStatus !== 'returned' && row.codAmount !== null && row.codAmount !== undefined && row.codAmount !== ((row.totalAmount || 0) - (row.depositAmount || 0))"
+            v-if="row.codStatus !== 'returned' && row.codAmount !== null && row.codAmount !== undefined && row.codAmount !== ((row.totalAmount || 0) + (row.shippingFee || 0) - (row.depositAmount || 0))"
             :content="`实际到付¥${Number(row.codAmount).toFixed(2)}`"
             placement="top"
           >
             <span class="cancelled-cod-badge">已改</span>
           </el-tooltip>
         </div>
+      </template>
+
+      <!-- 邮费列 -->
+      <template #column-shippingFee="{ row }">
+        <el-tooltip content="邮费为独立字段，不计入订单总额" placement="top">
+          <span v-if="row.shippingFee" class="amount-text">¥{{ Number(row.shippingFee).toLocaleString() }}</span>
+          <span v-else>-</span>
+        </el-tooltip>
+      </template>
+
+      <!-- 应付总额列 -->
+      <template #column-payableAmount="{ row }">
+        <el-tooltip content="应付总额 = 订单总额 + 邮费" placement="top">
+          <span class="amount-text">¥{{ ((row.totalAmount || 0) + (row.shippingFee || 0)).toLocaleString() }}</span>
+        </el-tooltip>
       </template>
 
       <!-- 客服微信号列 -->
@@ -726,6 +742,8 @@ interface OrderItem {
   products: ProductItem[] | string
   totalAmount: number
   depositAmount: number
+  shippingFee?: number
+  payableAmount?: number
   paymentMethod: string
   paymentMethodOther?: string
   orderSource?: string
@@ -933,6 +951,8 @@ const baseTableColumns = [
   { prop: 'salesPersonName', label: '销售人员', visible: true, minWidth: 100 },
   { prop: 'products', label: '商品', visible: true, minWidth: 150 },
   { prop: 'depositAmount', label: '定金', visible: true, minWidth: 90 },
+  { prop: 'shippingFee', label: '邮费', visible: false, minWidth: 90 },
+  { prop: 'payableAmount', label: '应付总额', visible: false, minWidth: 110 },
   { prop: 'collectAmount', label: '代收金额', visible: true, minWidth: 115 },
   { prop: 'serviceWechat', label: '客服微信号', visible: true, minWidth: 120 },
   { prop: 'orderSource', label: '订单来源', visible: true, minWidth: 100 },
@@ -1338,9 +1358,13 @@ const renderColumnContent = (row: OrderItem, column: TableColumn) => {
     case 'depositAmount':
       return row.depositAmount ? `¥${row.depositAmount.toLocaleString()}` : '-'
     case 'collectAmount':
-      // 代收金额 = 订单总额 - 定金
-      const collectAmt = row.collectAmount ?? ((row.totalAmount || 0) - (row.depositAmount || 0))
+      // 代收金额 = 订单总额 + 邮费 - 定金
+      const collectAmt = row.collectAmount ?? ((row.totalAmount || 0) + (row.shippingFee || 0) - (row.depositAmount || 0))
       return collectAmt > 0 ? `¥${collectAmt.toLocaleString()}` : '-'
+    case 'shippingFee':
+      return row.shippingFee ? `¥${Number(row.shippingFee).toLocaleString()}` : '-'
+    case 'payableAmount':
+      return `¥${((row.totalAmount || 0) + (row.shippingFee || 0)).toLocaleString()}`
     case 'paymentMethod':
       return getPaymentMethodText(row.paymentMethod, row.paymentMethodOther)
     case 'orderSource':
@@ -1846,7 +1870,8 @@ const mapOrderToExport = (order: any): ExportOrder => ({
   totalQuantity: order.totalQuantity || (Array.isArray(order.products) ? order.products.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0) : 0),
   totalAmount: order.totalAmount || 0,
   depositAmount: order.depositAmount || 0,
-  codAmount: order.codAmount || (order.totalAmount || 0) - (order.depositAmount || 0),
+  shippingFee: order.shippingFee || 0,
+  codAmount: order.codAmount || ((order.totalAmount || 0) + (order.shippingFee || 0) - (order.depositAmount || 0)),
   customerGender: order.customerGender || '',
   customerAge: order.customerAge || '',
   customerHeight: order.customerHeight || '',
@@ -2166,6 +2191,20 @@ const handleOpenCancelAudit = async () => {
   await loadCancelAuditOrders()
 }
 
+// 🔥 解析取消申请列表响应：后端返回 data: { list, total, page, pageSize, totalPages }
+// 兼容历史形态（直接数组），保证 total 能正确统计
+const parseCancelListResponse = (response: any): { list: any[]; total: number; totalPages: number } => {
+  const payload = response?.data ?? response
+  if (Array.isArray(payload)) {
+    return { list: payload, total: payload.length, totalPages: 0 }
+  }
+  const list = Array.isArray(payload?.list)
+    ? payload.list
+    : (Array.isArray(payload?.data) ? payload.data : [])
+  const total = typeof payload?.total === 'number' ? payload.total : list.length
+  return { list, total, totalPages: Number(payload?.totalPages) || 0 }
+}
+
 // 🔥 修复：使用专门的API加载取消申请审核订单列表
 const loadCancelAuditOrders = async () => {
   try {
@@ -2191,35 +2230,17 @@ const loadCancelAuditOrders = async () => {
     })
     console.log('[取消审核] 已审核订单API响应:', auditedResponse)
 
-    // 解析待审核订单数据
-    let pendingOrders: any[] = []
-    if (pendingResponse) {
-      if (Array.isArray(pendingResponse)) {
-        pendingOrders = pendingResponse
-      } else if (pendingResponse.data && Array.isArray(pendingResponse.data)) {
-        pendingOrders = pendingResponse.data
-        // 🔥 更新分页信息
-        if (pendingResponse.pagination) {
-          pendingPagination.total = pendingResponse.pagination.total || 0
-          pendingPagination.totalPages = pendingResponse.pagination.totalPages || 0
-        }
-      }
-    }
+    // 解析待审核订单数据 + 分页统计
+    const pendingParsed = parseCancelListResponse(pendingResponse)
+    const pendingOrders = pendingParsed.list
+    pendingPagination.total = pendingParsed.total
+    pendingPagination.totalPages = pendingParsed.totalPages
 
-    // 解析已审核订单数据
-    let auditedOrders: any[] = []
-    if (auditedResponse) {
-      if (Array.isArray(auditedResponse)) {
-        auditedOrders = auditedResponse
-      } else if (auditedResponse.data && Array.isArray(auditedResponse.data)) {
-        auditedOrders = auditedResponse.data
-        // 🔥 更新分页信息
-        if (auditedResponse.pagination) {
-          auditedPagination.total = auditedResponse.pagination.total || 0
-          auditedPagination.totalPages = auditedResponse.pagination.totalPages || 0
-        }
-      }
-    }
+    // 解析已审核订单数据 + 分页统计
+    const auditedParsed = parseCancelListResponse(auditedResponse)
+    const auditedOrders = auditedParsed.list
+    auditedPagination.total = auditedParsed.total
+    auditedPagination.totalPages = auditedParsed.totalPages
 
     // 🔥 修复：弹窗数据存入独立的 ref，不污染主列表的 orderStore.orders
     pendingCancelOrders.value = pendingOrders
@@ -2325,18 +2346,10 @@ const loadPendingCancelOrders = async () => {
       pageSize: pendingPagination.pageSize
     })
 
-    let pendingOrders: any[] = []
-    if (pendingResponse) {
-      if (Array.isArray(pendingResponse)) {
-        pendingOrders = pendingResponse
-      } else if (pendingResponse.data && Array.isArray(pendingResponse.data)) {
-        pendingOrders = pendingResponse.data
-        if (pendingResponse.pagination) {
-          pendingPagination.total = pendingResponse.pagination.total || 0
-          pendingPagination.totalPages = pendingResponse.pagination.totalPages || 0
-        }
-      }
-    }
+    const pendingParsed = parseCancelListResponse(pendingResponse)
+    const pendingOrders = pendingParsed.list
+    pendingPagination.total = pendingParsed.total
+    pendingPagination.totalPages = pendingParsed.totalPages
 
     // 🔥 修复：存入弹窗独立的 ref，不污染主列表
     pendingCancelOrders.value = pendingOrders
@@ -2374,18 +2387,10 @@ const loadAuditedCancelOrders = async () => {
       pageSize: auditedPagination.pageSize
     })
 
-    let auditedOrders: any[] = []
-    if (auditedResponse) {
-      if (Array.isArray(auditedResponse)) {
-        auditedOrders = auditedResponse
-      } else if (auditedResponse.data && Array.isArray(auditedResponse.data)) {
-        auditedOrders = auditedResponse.data
-        if (auditedResponse.pagination) {
-          auditedPagination.total = auditedResponse.pagination.total || 0
-          auditedPagination.totalPages = auditedResponse.pagination.totalPages || 0
-        }
-      }
-    }
+    const auditedParsed = parseCancelListResponse(auditedResponse)
+    const auditedOrders = auditedParsed.list
+    auditedPagination.total = auditedParsed.total
+    auditedPagination.totalPages = auditedParsed.totalPages
 
     // 🔥 修复：存入弹窗独立的 ref，不污染主列表
     auditedCancelOrders.value = auditedOrders

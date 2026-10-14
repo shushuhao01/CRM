@@ -247,6 +247,7 @@
           <el-date-picker
             v-model="searchForm.createTimeRange"
             type="daterange"
+            unlink-panels
             range-separator="至"
             start-placeholder="开始日期"
             end-placeholder="结束日期"
@@ -915,6 +916,7 @@
             <el-date-picker
               v-model="logDateRange"
               type="daterange"
+              unlink-panels
               range-separator="至"
               start-placeholder="开始日期"
               end-placeholder="结束日期"

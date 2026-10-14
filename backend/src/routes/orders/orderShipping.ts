@@ -25,7 +25,7 @@ export function registerShippingRoutes(router: Router): void {router.get('/shipp
     const queryBuilder = orderRepository.createQueryBuilder('order')
       .select([
         'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
-        'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+        'order.customerPhone', 'order.totalAmount', 'order.depositAmount', 'order.shippingFee',
         'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
         'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
         'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
@@ -175,7 +175,9 @@ export function registerShippingRoutes(router: Router): void {router.get('/shipp
         products: products,
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
-        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        shippingFee: Number(order.shippingFee) || 0,
+        payableAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0),
+        collectAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0),
         receiverName: order.shippingName || '',
         receiverPhone: order.shippingPhone || '',
         receiverAddress: order.shippingAddress || '',
@@ -267,7 +269,7 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
     const queryBuilder = orderRepository.createQueryBuilder('order')
       .select([
         'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
-        'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+        'order.customerPhone', 'order.totalAmount', 'order.depositAmount', 'order.shippingFee',
         'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
         'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt',
         'order.createdByDepartmentId', 'order.createdByDepartmentName',
@@ -487,6 +489,10 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
           const startOfYear = new Date(now.getFullYear(), 0, 1);
           queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
           break;
+        case 'timeout':
+          // 🔥 超时订单：发货时间-下单时间超过24小时（发货超时）
+          queryBuilder.andWhere('order.shippedAt IS NOT NULL AND TIMESTAMPDIFF(HOUR, order.createdAt, order.shippedAt) > 24');
+          break;
       }
     }
 
@@ -537,7 +543,9 @@ router.get('/shipping/shipped', authenticateToken, async (req: Request, res: Res
         products: products,
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
-        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        shippingFee: Number(order.shippingFee) || 0,
+        payableAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0),
+        collectAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0),
         receiverName: order.shippingName || '',
         receiverPhone: order.shippingPhone || '',
         receiverAddress: order.shippingAddress || '',
@@ -620,7 +628,7 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
     const queryBuilder = orderRepository.createQueryBuilder('order')
       .select([
         'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
-        'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+        'order.customerPhone', 'order.totalAmount', 'order.depositAmount', 'order.shippingFee',
         'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
         'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt', 'order.updatedAt',
         'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
@@ -704,6 +712,11 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
           const startOfYear = new Date(now.getFullYear(), 0, 1);
           queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
           break;
+        case 'timeout':
+          // 🔥 超时订单：下单超过24小时
+          const timeoutDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          queryBuilder.andWhere('order.createdAt <= :timeoutDate', { timeoutDate: timeoutDate.toISOString() });
+          break;
       }
     }
 
@@ -756,7 +769,9 @@ router.get('/shipping/returned', authenticateToken, async (req: Request, res: Re
         products: products,
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
-        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        shippingFee: Number(order.shippingFee) || 0,
+        payableAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0),
+        collectAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0),
         receiverName: order.shippingName || '',
         receiverPhone: order.shippingPhone || '',
         receiverAddress: order.shippingAddress || '',
@@ -821,7 +836,7 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
     const queryBuilder = orderRepository.createQueryBuilder('order')
       .select([
         'order.id', 'order.orderNumber', 'order.customerId', 'order.customerName',
-        'order.customerPhone', 'order.totalAmount', 'order.depositAmount',
+        'order.customerPhone', 'order.totalAmount', 'order.depositAmount', 'order.shippingFee',
         'order.status', 'order.markType', 'order.paymentStatus', 'order.paymentMethod',
         'order.remark', 'order.createdBy', 'order.createdByName', 'order.createdAt', 'order.updatedAt',
         'order.shippingName', 'order.shippingPhone', 'order.shippingAddress',
@@ -904,6 +919,11 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
           const startOfYear = new Date(now.getFullYear(), 0, 1);
           queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
           break;
+        case 'timeout':
+          // 🔥 超时订单：下单超过24小时
+          const timeoutDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          queryBuilder.andWhere('order.createdAt <= :timeoutDate', { timeoutDate: timeoutDate.toISOString() });
+          break;
       }
     }
 
@@ -956,7 +976,9 @@ router.get('/shipping/cancelled', authenticateToken, async (req: Request, res: R
         products: products,
         totalAmount: Number(order.totalAmount) || 0,
         depositAmount: Number(order.depositAmount) || 0,
-        collectAmount: (Number(order.totalAmount) || 0) - (Number(order.depositAmount) || 0),
+        shippingFee: Number(order.shippingFee) || 0,
+        payableAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0),
+        collectAmount: (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0) - (Number(order.depositAmount) || 0),
         receiverName: order.shippingName || '',
         receiverPhone: order.shippingPhone || '',
         receiverAddress: order.shippingAddress || '',
@@ -1080,6 +1102,11 @@ router.get('/shipping/draft', authenticateToken, async (req: Request, res: Respo
         case 'thisYear':
           const startOfYear = new Date(now.getFullYear(), 0, 1);
           queryBuilder.andWhere('order.createdAt >= :startOfYear', { startOfYear: startOfYear.toISOString().split('T')[0] + ' 00:00:00' });
+          break;
+        case 'timeout':
+          // 🔥 超时订单：下单超过24小时
+          const timeoutDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          queryBuilder.andWhere('order.createdAt <= :timeoutDate', { timeoutDate: timeoutDate.toISOString() });
           break;
       }
     }
