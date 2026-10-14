@@ -1810,8 +1810,8 @@ const loadOrderList = async () => {
     // 同步物流状态（异步执行，不阻塞页面加载）
     syncLogisticsData()
 
-    // 更新概览数据（使用当前页数据，概览数据需要单独从API获取）
-    updateOverviewData(orders)
+    // 更新概览数据（全局统计，与当前标签页无关）
+    loadShippingOverview()
   } catch (_error) {
     // 🔥 修复：忽略请求被取消的错误（由新请求替代旧请求时产生，属于正常行为）
     if (axios.isCancel(_error)) {
@@ -1827,32 +1827,25 @@ const loadOrderList = async () => {
   }
 }
 
-// 更新概览数据
-const updateOverviewData = (currentPageOrders: any[] = []) => {
-  // 🔥 概览数据应该显示总数，这里暂时用当前页数据
-  // 后续可以从API单独获取统计数据
-  const orders = Array.isArray(currentPageOrders) ? currentPageOrders : []
+// 更新概览数据（全局统计，与当前标签页无关）
+const loadShippingOverview = async () => {
+  try {
+    const { orderApi } = await import('@/api/order')
+    const response = await orderApi.getShippingStatistics()
+    const data = response?.data
+    if (!data) return
 
-  // 使用total作为总订单数
-  overviewData.totalOrders = total.value
-  overviewData.totalAmount = orders.reduce((sum: number, order: any) => sum + (order.totalAmount || 0), 0)
-
-  // 今日发货数量
-  const today = new Date().toISOString().split('T')[0]
-  overviewData.shippedToday = orders.filter((order: any) =>
-    order.shipTime && order.shipTime.startsWith(today)
-  ).length
-
-  // 🔥 超时发货订单：待发货超过24小时的订单
-  const now = new Date().getTime()
-  const timeoutThreshold = 24 * 60 * 60 * 1000 // 24小时
-  const timeoutOrders = orders.filter((order: any) => {
-    if (order.status !== 'pending_shipment' && order.status !== 'pending') return false
-    const createTime = new Date(order.createTime || order.createdAt).getTime()
-    return (now - createTime) > timeoutThreshold
-  })
-  overviewData.timeoutOrders = timeoutOrders.length
-  overviewData.timeoutAmount = timeoutOrders.reduce((sum: number, order: any) => sum + (order.totalAmount || 0), 0)
+    // 🔥 待发货订单 / 待发货金额：全局待发货（不随标签页变化）
+    overviewData.totalOrders = Number(data.pendingCount) || 0
+    overviewData.totalAmount = Number(data.pendingAmount) || 0
+    // 🔥 今日发货
+    overviewData.shippedToday = Number(data.shippedToday) || 0
+    // 🔥 超时发货订单 / 超时订单金额：待发货超过24小时（全局）
+    overviewData.timeoutOrders = Number(data.timeoutCount) || 0
+    overviewData.timeoutAmount = Number(data.timeoutAmount) || 0
+  } catch (error) {
+    console.warn('[发货列表] 获取概览统计失败:', error)
+  }
 }
 
 // 同步物流数据

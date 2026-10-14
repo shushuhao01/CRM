@@ -500,7 +500,25 @@ const loadTrackingData = async () => {
       o.orderNumber === paramId
     )
 
-    // store未命中时，通过物流单号查询订单（/orders/by-tracking-no，命中返回订单id）
+    // 🔥 修复：store未命中时，优先按「订单ID」从API获取完整订单
+    // 注意：本页路由参数传的是订单ID（来自列表行的 row.orderId），不能再直接当作运单号查询
+    if (!order && paramId) {
+      try {
+        const { api } = await import('@/api/request')
+        const idRes = await api.get<any>(`/orders/${paramId}`, {
+          // 🔥 抑制「请求的资源不存在」全局提示
+          showError: false
+        })
+        if (idRes?.success && idRes.data) {
+          order = idRes.data
+          console.log('[物流跟踪详情] 通过订单ID获取订单成功:', order.orderNumber || order.id)
+        }
+      } catch (_idError) {
+        console.log('[物流跟踪详情] 通过订单ID获取订单失败:', _idError)
+      }
+    }
+
+    // store仍未命中时，通过物流单号查询订单（/orders/by-tracking-no，命中返回订单id）
     if (!order && paramId) {
       try {
         const { api } = await import('@/api/request')

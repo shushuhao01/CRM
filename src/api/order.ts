@@ -218,10 +218,14 @@ export const orderApi = {
   }) =>
     api.get<OrderListResponse>('/orders/shipping/draft', { params }),
 
-  // 获取物流统计数据
+  // 获取物流统计数据（全局，与当前标签页无关）
   getShippingStatistics: () =>
     api.get<{
       pendingCount: number;
+      pendingAmount: number;
+      shippedToday: number;
+      timeoutCount: number;
+      timeoutAmount: number;
       shippedCount: number;
       deliveredCount: number;
       exceptionCount: number;

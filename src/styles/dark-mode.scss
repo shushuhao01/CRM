@@ -5581,6 +5581,29 @@ html.dark {
   .performance-manage-page .quick-btn.active,
   .cod-collection-page .quick-btn.active,
   .value-added-manage-page .quick-btn.active {
+    background: var(--el-color-primary) !important;
+    border-color: var(--el-color-primary) !important;
+    color: #fff !important;
+  }
+
+  /* 通用快捷筛选按钮选中态（发货列表/状态更新/资料列表/结算报表等以 .quick-btn.active 标记的页面）
+     全局 html.dark .quick-btn 的 raised 背景带 !important，会压过组件内 scoped 的 .active 声明，
+     此处显式还原选中色，风格与订单列表一致（primary 蓝底 + 白字） */
+  .quick-btn.active {
+    background: var(--el-color-primary) !important;
+    border-color: var(--el-color-primary) !important;
+    color: #fff !important;
+  }
+
+  /* el-button 型快捷筛选（业绩统计-个人业绩） */
+  .filters-actions-bar .quick-filters .el-button--primary {
+    background-color: var(--el-color-primary) !important;
+    border-color: var(--el-color-primary) !important;
+    color: #fff !important;
+  }
+  .filters-actions-bar .quick-filters .el-button--success {
+    background-color: var(--el-color-success) !important;
+    border-color: var(--el-color-success) !important;
     color: #fff !important;
   }
 

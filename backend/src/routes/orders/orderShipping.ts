@@ -1154,26 +1154,53 @@ router.get('/shipping/statistics', authenticateToken, async (_req: Request, res:
     const orderRepository = getTenantRepo(Order);
     const startTime = Date.now();
 
-    // 🔥 优化：使用并行查询获取所有统计数据
-    const [pendingCount, shippedCount, deliveredCount, exceptionCount] = await Promise.all([
-      orderRepository.count({ where: { status: 'pending_shipment' } }),
+    const timeoutDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // 🔥 优化：使用并行查询获取所有统计数据（全局统计，与前端标签页无关）
+    const [pendingAgg, shippedCount, deliveredCount, exceptionCount, shippedToday, timeoutAgg] = await Promise.all([
+      orderRepository.createQueryBuilder('order')
+        .select('COALESCE(SUM(order.totalAmount), 0)', 'amount')
+        .addSelect('COUNT(*)', 'count')
+        .where('order.status = :status', { status: 'pending_shipment' })
+        .getRawOne(),
       orderRepository.count({ where: { status: 'shipped' } }),
       orderRepository.count({ where: { status: 'delivered' } }),
       orderRepository.createQueryBuilder('order')
         .where('order.status IN (:...statuses)', {
           statuses: ['rejected', 'package_exception', 'logistics_returned', 'logistics_cancelled']
         })
-        .getCount()
+        .getCount(),
+      // 🔥 今日发货：发货时间为今天且已发货/已签收/已完成的订单数
+      orderRepository.createQueryBuilder('order')
+        .where('DATE(order.shippedAt) = CURDATE()')
+        .andWhere('order.status IN (:...statuses)', { statuses: ['shipped', 'delivered', 'completed'] })
+        .getCount(),
+      // 🔥 超时发货：待发货且下单超过24小时
+      orderRepository.createQueryBuilder('order')
+        .select('COALESCE(SUM(order.totalAmount), 0)', 'amount')
+        .addSelect('COUNT(*)', 'count')
+        .where('order.status = :status', { status: 'pending_shipment' })
+        .andWhere('order.createdAt <= :timeoutDate', { timeoutDate })
+        .getRawOne()
     ]);
 
+    const pendingCount = Number(pendingAgg?.count) || 0;
+    const pendingAmount = Number(pendingAgg?.amount) || 0;
+    const timeoutCount = Number(timeoutAgg?.count) || 0;
+    const timeoutAmount = Number(timeoutAgg?.amount) || 0;
+
     const queryTime = Date.now() - startTime;
-    log.info(`📊 [物流统计] 查询完成: 待发货${pendingCount}, 已发货${shippedCount}, 已签收${deliveredCount}, 异常${exceptionCount}, 耗时${queryTime}ms`);
+    log.info(`📊 [物流统计] 查询完成: 待发货${pendingCount}(¥${pendingAmount}), 今日发货${shippedToday}, 超时${timeoutCount}(¥${timeoutAmount}), 已发货${shippedCount}, 已签收${deliveredCount}, 异常${exceptionCount}, 耗时${queryTime}ms`);
 
     res.json({
       success: true,
       code: 200,
       data: {
         pendingCount,
+        pendingAmount,
+        shippedToday,
+        timeoutCount,
+        timeoutAmount,
         shippedCount,
         deliveredCount,
         exceptionCount,
