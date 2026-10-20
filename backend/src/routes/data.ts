@@ -486,7 +486,7 @@ router.get('/search', async (req: Request, res: Response) => {
       const orderResult = await AppDataSource.query(
         `SELECT c.* FROM customers c
          JOIN orders o ON c.id = o.customer_id
-         WHERE o.order_no = ?${tData.sql}${tCustomer.sql}
+         WHERE o.order_number = ?${tData.sql}${tCustomer.sql}
          LIMIT 1`,
         [keyword, ...tData.params, ...tCustomer.params]
       );
@@ -509,8 +509,8 @@ router.get('/search', async (req: Request, res: Response) => {
       const logisticsResult = await AppDataSource.query(
         `SELECT c.* FROM customers c
          JOIN orders o ON c.id = o.customer_id
-         JOIN logistics_tracking l ON o.id = l.order_id
-         WHERE l.tracking_number = ?${tLogistics.sql}${tLogisticsC.sql}
+         JOIN logistics_tracking l ON o.id = l.orderId
+         WHERE l.trackingNo = ?${tLogistics.sql}${tLogisticsC.sql}
          LIMIT 1`,
         [keyword, ...tLogistics.params, ...tLogisticsC.params]
       );
@@ -548,6 +548,22 @@ router.get('/search', async (req: Request, res: Response) => {
         };
         log.info('✅ [客户搜索] 获取到销售员信息:', salesPerson.real_name || salesPerson.username);
       }
+    }
+
+    // 🔥 订单数：从 orders 表实时统计，只排除取消类状态（物流部退回、审核拒绝仍正常统计）
+    // customers.order_count 为历史缓存列，长期未回写会恒为 0
+    try {
+      const tOrder = tenantSQL('o.');
+      const orderCountResult = await AppDataSource.query(
+        `SELECT COUNT(*) AS cnt FROM orders o
+          WHERE o.customer_id = ?
+            AND o.status NOT IN ('pending_cancel','cancelled','logistics_cancelled')
+            ${tOrder.sql}`,
+        [customer.id, ...tOrder.params]
+      );
+      customer.orderCount = parseInt(orderCountResult?.[0]?.cnt, 10) || 0;
+    } catch (e) {
+      log.warn('[客户搜索] 统计订单数失败，保留 customers.order_count:', e);
     }
 
     res.json({
@@ -640,6 +656,30 @@ router.get('/search-customer', async (req: Request, res: Response) => {
 
     log.info(`[客户查询] 搜索 "${kw}" 结果: ${total} 条`);
 
+    // 🔥 订单数：从 orders 表实时统计，只排除取消类状态（待取消/已取消/物流部取消）
+    // 物流部退回、审核拒绝、退款等仍属正常统计范围；customers.order_count 为历史缓存列，长期未回写会恒为 0
+    const orderCountMap: Record<string, number> = {};
+    const customerIds = customers.map((c: any) => c.id).filter(Boolean);
+    if (customerIds.length > 0) {
+      try {
+        const orderTenantCond = tenantId ? 'AND tenant_id = ?' : 'AND tenant_id IS NULL';
+        const orderCountRows = await AppDataSource.query(
+          `SELECT customer_id, COUNT(*) AS cnt
+             FROM orders
+            WHERE customer_id IN (${customerIds.map(() => '?').join(',')})
+              AND status NOT IN ('pending_cancel','cancelled','logistics_cancelled')
+              ${orderTenantCond}
+            GROUP BY customer_id`,
+          [...customerIds, ...(tenantId ? [tenantId] : [])]
+        );
+        orderCountRows.forEach((r: any) => {
+          orderCountMap[r.customer_id] = parseInt(r.cnt, 10) || 0;
+        });
+      } catch (e) {
+        log.warn('[客户查询] 统计订单数失败，回退到 customers.order_count:', e);
+      }
+    }
+
     // 批量获取销售员信息
     const salesIds = [...new Set(customers.map((c: any) => c.sales_person_id).filter(Boolean))];
     const salesMap: Record<string, any> = {};
@@ -682,7 +722,7 @@ router.get('/search-customer', async (req: Request, res: Response) => {
         level: c.level || '',
         address: c.address || '',
         createTime: c.created_at,
-        orderCount: c.order_count || 0,
+        orderCount: orderCountMap[c.id] ?? (parseInt(c.order_count, 10) || 0),
         ownerName: owner?.name || '未分配',
         ownerDepartment: owner?.department || '',
         matchType
