@@ -7111,6 +7111,19 @@ html.dark {
   .detail-value {
     color: var(--crm-dark-text-primary) !important;
   }
+  /* 授权详情底部同步说明 */
+  .sync-hint {
+    background: var(--crm-dark-raised) !important;
+    border: 1px solid var(--crm-dark-border-light) !important;
+  }
+  .detail-value-mono {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .alert-btn-primary,
+  .alert-btn-success {
+    background: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
 
 /* ============================================================
    69. 系统设置 — 系统入口 (SystemEntryShare)
