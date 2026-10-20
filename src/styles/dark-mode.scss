@@ -2133,6 +2133,214 @@ html.dark [style*="background-color:#f0f9eb"] {
   background-color: var(--crm-dark-raised) !important;
 }
 
+/* 内联 style 浅色背景补充白名单（小写） */
+html.dark [style*="background: #f4f4f5"],
+html.dark [style*="background:#f4f4f5"],
+html.dark [style*="background-color: #f4f4f5"],
+html.dark [style*="background-color:#f4f4f5"],
+html.dark [style*="background: #f0f0f0"],
+html.dark [style*="background:#f0f0f0"],
+html.dark [style*="background-color: #f0f0f0"],
+html.dark [style*="background-color:#f0f0f0"],
+html.dark [style*="background: #f5f5f5"],
+html.dark [style*="background:#f5f5f5"],
+html.dark [style*="background-color: #f5f5f5"],
+html.dark [style*="background-color:#f5f5f5"],
+html.dark [style*="background: #f5f6f7"],
+html.dark [style*="background:#f5f6f7"],
+html.dark [style*="background-color: #f5f6f7"],
+html.dark [style*="background-color:#f5f6f7"],
+html.dark [style*="background: #f9f9f9"],
+html.dark [style*="background:#f9f9f9"],
+html.dark [style*="background-color: #f9f9f9"],
+html.dark [style*="background-color:#f9f9f9"],
+html.dark [style*="background: #e8edf3"],
+html.dark [style*="background:#e8edf3"],
+html.dark [style*="background-color: #e8edf3"],
+html.dark [style*="background-color:#e8edf3"],
+html.dark [style*="background: #e5e7eb"],
+html.dark [style*="background:#e5e7eb"],
+html.dark [style*="background-color: #e5e7eb"],
+html.dark [style*="background-color:#e5e7eb"],
+html.dark [style*="background: #f3f4f6"],
+html.dark [style*="background:#f3f4f6"],
+html.dark [style*="background-color: #f3f4f6"],
+html.dark [style*="background-color:#f3f4f6"],
+html.dark [style*="background: #ebeef5"],
+html.dark [style*="background:#ebeef5"],
+html.dark [style*="background-color: #ebeef5"],
+html.dark [style*="background-color:#ebeef5"] {
+  background-color: var(--crm-dark-raised) !important;
+}
+
+/* 内联 style 浅色背景补充白名单（大写十六进制变体） */
+html.dark [style*="background: #F4F4F5"],
+html.dark [style*="background:#F4F4F5"],
+html.dark [style*="background-color: #F4F4F5"],
+html.dark [style*="background-color:#F4F4F5"],
+html.dark [style*="background: #F0F0F0"],
+html.dark [style*="background:#F0F0F0"],
+html.dark [style*="background-color: #F0F0F0"],
+html.dark [style*="background-color:#F0F0F0"],
+html.dark [style*="background: #F5F5F5"],
+html.dark [style*="background:#F5F5F5"],
+html.dark [style*="background-color: #F5F5F5"],
+html.dark [style*="background-color:#F5F5F5"],
+html.dark [style*="background: #F5F6F7"],
+html.dark [style*="background:#F5F6F7"],
+html.dark [style*="background-color: #F5F6F7"],
+html.dark [style*="background-color:#F5F6F7"],
+html.dark [style*="background: #F9F9F9"],
+html.dark [style*="background:#F9F9F9"],
+html.dark [style*="background-color: #F9F9F9"],
+html.dark [style*="background-color:#F9F9F9"],
+html.dark [style*="background: #F3F4F6"],
+html.dark [style*="background:#F3F4F6"],
+html.dark [style*="background-color: #F3F4F6"],
+html.dark [style*="background-color:#F3F4F6"],
+html.dark [style*="background: #E5E7EB"],
+html.dark [style*="background:#E5E7EB"],
+html.dark [style*="background-color: #E5E7EB"],
+html.dark [style*="background-color:#E5E7EB"],
+html.dark [style*="background: #EBEEF5"],
+html.dark [style*="background:#EBEEF5"],
+html.dark [style*="background-color: #EBEEF5"],
+html.dark [style*="background-color:#EBEEF5"],
+html.dark [style*="background: #EEF2FF"],
+html.dark [style*="background:#EEF2FF"],
+html.dark [style*="background-color: #EEF2FF"],
+html.dark [style*="background-color:#EEF2FF"],
+html.dark [style*="background: #ECFDF5"],
+html.dark [style*="background:#ECFDF5"],
+html.dark [style*="background-color: #ECFDF5"],
+html.dark [style*="background-color:#ECFDF5"],
+html.dark [style*="background: #FEF2F2"],
+html.dark [style*="background:#FEF2F2"],
+html.dark [style*="background-color: #FEF2F2"],
+html.dark [style*="background-color:#FEF2F2"],
+html.dark [style*="background: #FFF7ED"],
+html.dark [style*="background:#FFF7ED"],
+html.dark [style*="background-color: #FFF7ED"],
+html.dark [style*="background-color:#FFF7ED"],
+html.dark [style*="background: #F0FDF4"],
+html.dark [style*="background:#F0FDF4"],
+html.dark [style*="background-color: #F0FDF4"],
+html.dark [style*="background-color:#F0FDF4"],
+html.dark [style*="background: #F5F3FF"],
+html.dark [style*="background:#F5F3FF"],
+html.dark [style*="background-color: #F5F3FF"],
+html.dark [style*="background-color:#F5F3FF"],
+html.dark [style*="background: #FFFBEB"],
+html.dark [style*="background:#FFFBEB"],
+html.dark [style*="background-color: #FFFBEB"],
+html.dark [style*="background-color:#FFFBEB"],
+html.dark [style*="background: #EFF6FF"],
+html.dark [style*="background:#EFF6FF"],
+html.dark [style*="background-color: #EFF6FF"],
+html.dark [style*="background-color:#EFF6FF"] {
+  background-color: var(--crm-dark-raised) !important;
+}
+
+/* 内联 style 浅色背景（小写，其余色板） */
+html.dark [style*="background: #eef2ff"],
+html.dark [style*="background:#eef2ff"],
+html.dark [style*="background-color: #eef2ff"],
+html.dark [style*="background-color:#eef2ff"],
+html.dark [style*="background: #ecfdf5"],
+html.dark [style*="background:#ecfdf5"],
+html.dark [style*="background-color: #ecfdf5"],
+html.dark [style*="background-color:#ecfdf5"],
+html.dark [style*="background: #f0fdf4"],
+html.dark [style*="background:#f0fdf4"],
+html.dark [style*="background-color: #f0fdf4"],
+html.dark [style*="background-color:#f0fdf4"],
+html.dark [style*="background: #f5f3ff"],
+html.dark [style*="background:#f5f3ff"],
+html.dark [style*="background-color: #f5f3ff"],
+html.dark [style*="background-color:#f5f3ff"],
+html.dark [style*="background: #eff6ff"],
+html.dark [style*="background:#eff6ff"],
+html.dark [style*="background-color: #eff6ff"],
+html.dark [style*="background-color:#eff6ff"],
+html.dark [style*="background: #e8f5e9"],
+html.dark [style*="background:#e8f5e9"],
+html.dark [style*="background-color: #e8f5e9"],
+html.dark [style*="background-color:#e8f5e9"],
+html.dark [style*="background: #f0f7ff"],
+html.dark [style*="background:#f0f7ff"],
+html.dark [style*="background-color: #f0f7ff"],
+html.dark [style*="background-color:#f0f7ff"],
+html.dark [style*="background: #f0f1fe"],
+html.dark [style*="background:#f0f1fe"],
+html.dark [style*="background-color: #f0f1fe"],
+html.dark [style*="background-color:#f0f1fe"],
+html.dark [style*="background: #f0faf4"],
+html.dark [style*="background:#f0faf4"],
+html.dark [style*="background-color: #f0faf4"],
+html.dark [style*="background-color:#f0faf4"] {
+  background-color: var(--crm-dark-raised) !important;
+}
+
+/* 内联 style 浅色调提示背景（浅黄/浅红/浅橙/浅绿） */
+html.dark [style*="background: #fdf6ec"],
+html.dark [style*="background:#fdf6ec"],
+html.dark [style*="background-color: #fdf6ec"],
+html.dark [style*="background-color:#fdf6ec"],
+html.dark [style*="background: #fef0f0"],
+html.dark [style*="background:#fef0f0"],
+html.dark [style*="background-color: #fef0f0"],
+html.dark [style*="background-color:#fef0f0"],
+html.dark [style*="background: #fff3cd"],
+html.dark [style*="background:#fff3cd"],
+html.dark [style*="background-color: #fff3cd"],
+html.dark [style*="background-color:#fff3cd"],
+html.dark [style*="background: #fff3e0"],
+html.dark [style*="background:#fff3e0"],
+html.dark [style*="background-color: #fff3e0"],
+html.dark [style*="background-color:#fff3e0"],
+html.dark [style*="background: #fff7ed"],
+html.dark [style*="background:#fff7ed"],
+html.dark [style*="background-color: #fff7ed"],
+html.dark [style*="background-color:#fff7ed"],
+html.dark [style*="background: #fffbe6"],
+html.dark [style*="background:#fffbe6"],
+html.dark [style*="background-color: #fffbe6"],
+html.dark [style*="background-color:#fffbe6"],
+html.dark [style*="background: #fef2f2"],
+html.dark [style*="background:#fef2f2"],
+html.dark [style*="background-color: #fef2f2"],
+html.dark [style*="background-color:#fef2f2"],
+html.dark [style*="background: #f6ffed"],
+html.dark [style*="background:#f6ffed"],
+html.dark [style*="background-color: #f6ffed"],
+html.dark [style*="background-color:#f6ffed"],
+html.dark [style*="background: #f0f9ff"],
+html.dark [style*="background:#f0f9ff"],
+html.dark [style*="background-color: #f0f9ff"],
+html.dark [style*="background-color:#f0f9ff"] {
+  background-color: var(--crm-dark-raised) !important;
+}
+
+/* 内联 style 浅色边框（#d 开头 / #e 开头的灰白边框） */
+html.dark [style*="border: 1px solid #dcdfe6"],
+html.dark [style*="border:1px solid #dcdfe6"],
+html.dark [style*="border: 1px solid #e4e7ed"],
+html.dark [style*="border:1px solid #e4e7ed"],
+html.dark [style*="border: 1px solid #e5e7eb"],
+html.dark [style*="border:1px solid #e5e7eb"],
+html.dark [style*="border: 1px solid #ebeef5"],
+html.dark [style*="border:1px solid #ebeef5"],
+html.dark [style*="border: 1px solid #f0f0f0"],
+html.dark [style*="border:1px solid #f0f0f0"],
+html.dark [style*="border-bottom: 1px solid #ebeef5"],
+html.dark [style*="border-bottom:1px solid #ebeef5"],
+html.dark [style*="border-bottom: 1px solid #e4e7ed"],
+html.dark [style*="border-bottom:1px solid #e4e7ed"],
+html.dark [style*="border-top: 1px solid #ebeef5"],
+html.dark [style*="border-top:1px solid #ebeef5"] {
+  border-color: var(--crm-dark-border-light) !important;
+}
+
 /* Share.vue 的 table 行交替色 */
 html.dark {
   .table-row-even {
@@ -7160,4 +7368,458 @@ html.dark {
 }
 .cod-detail-dialog .el-dialog__body {
   overflow-x: hidden !important;
+}
+
+/* ============================================================
+   74. 物流管理 — 发货列表「退回订单 / 取消订单」弹窗
+   ============================================================ */
+html.dark {
+  /* 左右信息面板 */
+  .return-order-dialog .order-summary,
+  .return-order-dialog .return-reason,
+  .cancel-order-dialog .order-summary,
+  .cancel-order-dialog .cancel-reason {
+    background-color: var(--crm-dark-card) !important;
+    border: 1px solid var(--crm-dark-border-light) !important;
+  }
+
+  /* 区块标题 */
+  .return-order-dialog .section-title,
+  .cancel-order-dialog .section-title {
+    color: var(--crm-dark-text-primary) !important;
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+
+  /* 订单信息字段 */
+  .return-order-dialog .info-item .label,
+  .cancel-order-dialog .info-item .label {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .return-order-dialog .info-item .value,
+  .cancel-order-dialog .info-item .value {
+    color: var(--crm-dark-text-primary) !important;
+  }
+
+  /* 历史记录区域 */
+  .return-order-dialog .return-history,
+  .cancel-order-dialog .cancel-history {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .return-order-dialog .history-header-title,
+  .cancel-order-dialog .history-header-title {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .return-order-dialog .history-item,
+  .cancel-order-dialog .history-item {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+  .return-order-dialog .history-time,
+  .cancel-order-dialog .history-time {
+    color: var(--crm-dark-text-muted) !important;
+  }
+  .return-order-dialog .history-reason,
+  .cancel-order-dialog .history-reason {
+    color: var(--crm-dark-text-regular) !important;
+  }
+
+  /* 底部确认提示说明文字 */
+  .return-order-dialog .confirm-content,
+  .cancel-order-dialog .confirm-content {
+    color: var(--crm-dark-text-regular) !important;
+  }
+}
+
+/* ============================================================
+   75. 深色模式细节补漏（权限 / 物流跟踪 / 短信 / 企微 / 侧边栏等）
+   ============================================================ */
+html.dark {
+  /* ---------- 75.1 角色权限树（RoleDialog，类名单复数失配） ---------- */
+  .permissions-tree {
+    background-color: var(--crm-dark-card) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .permission-menu {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+  .permission-menu .menu-header {
+    background-color: var(--crm-dark-raised) !important;
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+  .permission-menu .menu-header .menu-title {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .permission-menu .templates-header {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+
+  /* ---------- 75.2 用户详情 / 批量授权 / 角色模板预览 ---------- */
+  .permissions-detail .permission-group,
+  .step-content .permission-group {
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .permissions-detail .permission-section h4,
+  .permissions-detail h3,
+  .step-content h4 {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .permissions-detail .permission-group h5,
+  .step-content .permission-group h5 {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .logs-filter {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .step-content .template-actions {
+    border-top-color: var(--crm-dark-border-light) !important;
+  }
+  .step-content .permission-summary > div {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .permissions-detail .module-header {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .permissions-detail .condition-field,
+  .permissions-detail .condition-value {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .permissions-detail .usage-stats {
+    background-color: var(--crm-dark-raised) !important;
+  }
+
+  /* ---------- 75.3 物流跟踪详情弹窗（.trace-desc 与全局 .trace-description 不匹配） ---------- */
+  .trace-header {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+  .trace-header .company-name,
+  .trace-status {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .trace-header .tracking-no,
+  .trace-desc {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .trace-meta {
+    color: var(--crm-dark-text-muted) !important;
+  }
+  .trace-item:hover {
+    background-color: var(--crm-dark-hover) !important;
+  }
+  .trace-item-first {
+    background: var(--crm-dark-raised) !important;
+  }
+
+  /* ---------- 75.4 呼入悬浮窗失败原因 ---------- */
+  .call-fail-reason {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+
+  /* ---------- 75.5 通话客户详情弹窗 ---------- */
+  .customer-detail-dialog .customer-header {
+    background: var(--crm-dark-raised) !important;
+  }
+  .customer-detail-dialog .customer-name {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .customer-detail-dialog .customer-contact {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .customer-detail-dialog .tabs-section {
+    background-color: var(--crm-dark-card) !important;
+  }
+  .customer-detail-dialog .tabs-header {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+
+  /* ---------- 75.6 录音管理 ---------- */
+  .recording-management .player-info {
+    border-top-color: var(--crm-dark-border-light) !important;
+  }
+  .recording-management .detail-label {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .recording-management .detail-value {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .recording-management .waveform-placeholder,
+  .recording-management .waveform-info {
+    background-color: var(--crm-dark-raised) !important;
+  }
+
+  /* ---------- 75.7 短信模板列表（SmsTemplates） ---------- */
+  .variables-section {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .variables-section .variables-tip {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .form-tip {
+    background-color: var(--crm-dark-raised) !important;
+    border-left-color: var(--crm-dark-border-light) !important;
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .preview-header {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+  .template-footer {
+    border-top-color: var(--crm-dark-border-light) !important;
+  }
+  .content-cell .content-text {
+    color: var(--crm-dark-text-regular) !important;
+  }
+
+  /* ---------- 75.8 短信模板详情（SmsTemplateDetail） ---------- */
+  .application-item {
+    background-color: var(--crm-dark-card) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .card-footer {
+    border-top-color: var(--crm-dark-border-light) !important;
+  }
+  .card-footer .more-vars {
+    color: var(--crm-dark-text-muted) !important;
+  }
+  .content-box {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .preview-effect {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+
+  /* ---------- 75.9 企微配置：密钥管理 / 功能授权 ---------- */
+  .secret-manager .config-info,
+  .feature-auth .usage-card {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .secret-manager .config-label,
+  .secret-manager .secret-sub-label,
+  .feature-auth .usage-card__detail,
+  .feature-auth .usage-card__stat-label {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .secret-manager .config-name,
+  .secret-manager .tp-secret-card__name,
+  .secret-manager .secret-name,
+  .feature-auth .section-title,
+  .feature-auth .usage-card__title,
+  .feature-auth .usage-card__stat-value,
+  .feature-auth .usage-card__stat-max {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .secret-manager .tp-secret-card__desc,
+  .secret-manager .secret-hint {
+    color: var(--crm-dark-text-muted) !important;
+  }
+  .secret-manager .tp-secret-card,
+  .secret-manager .secret-item {
+    background-color: var(--crm-dark-card) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .feature-auth .section-title {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+
+  /* ---------- 75.10 企微客户群详情 / 渠道活码详情 / 链接详情 ---------- */
+  .group-detail-content .detail-title,
+  .contact-way-detail .detail-title,
+  .link-detail-content .detail-title,
+  .group-detail-content .section-title,
+  .group-detail-content .act-value,
+  .group-detail-content .top-name,
+  .group-detail-content .crm-val,
+  .contact-way-detail .stat-value,
+  .link-detail-content .stat-value {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .group-detail-content .info-item .label,
+  .group-detail-content .act-label,
+  .group-detail-content .top-title,
+  .group-detail-content .notice-text,
+  .group-detail-content .kick-tip,
+  .contact-way-detail .info-item .label,
+  .contact-way-detail .stat-label,
+  .link-detail-content .info-item .label,
+  .link-detail-content .stat-label {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .group-detail-content .info-item .value,
+  .contact-way-detail .info-item .value,
+  .link-detail-content .info-item .value {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .group-detail-content .activity-item {
+    background-color: var(--crm-dark-card) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .group-detail-content .top-item,
+  .contact-way-detail .stat-today,
+  .link-detail-content .stat-today {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+    border-top-color: var(--crm-dark-border-light) !important;
+  }
+  .contact-way-detail .stat-today strong,
+  .link-detail-content .stat-today strong {
+    color: var(--crm-dark-text-regular) !important;
+  }
+
+  /* ---------- 75.11 获客成员排行 ---------- */
+  .acquisition-member-ranking .rank-2 {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .acquisition-member-ranking .member-name,
+  .acquisition-member-ranking .summary-value {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .acquisition-member-ranking .member-dept,
+  .acquisition-member-ranking .dim-header,
+  .acquisition-member-ranking .summary-label {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .acquisition-member-ranking .compare-card,
+  .acquisition-member-ranking .member-links-summary {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .acquisition-member-ranking .compare-dim-card {
+    background-color: var(--crm-dark-card) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .acquisition-member-ranking .dim-bar-bg {
+    background-color: var(--crm-dark-border) !important;
+  }
+  .acquisition-member-ranking .dim-member-val {
+    color: var(--crm-dark-text-regular) !important;
+  }
+
+  /* ---------- 75.12 档案统计 ---------- */
+  .archive-stats .type-bar-bg {
+    background-color: var(--crm-dark-border) !important;
+  }
+  .archive-stats .rank-badge {
+    background-color: var(--crm-dark-raised) !important;
+    color: var(--crm-dark-text-secondary) !important;
+  }
+
+  /* ---------- 75.13 企微侧边栏客户画像 ---------- */
+  .sidebar-portrait {
+    background-color: var(--crm-dark-base) !important;
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .sidebar-portrait .preview-card {
+    background-color: var(--crm-dark-card) !important;
+  }
+  .sidebar-portrait .card-title,
+  .sidebar-portrait .customer-name,
+  .sidebar-portrait .info-row,
+  .sidebar-portrait .metric-val {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .sidebar-portrait .avatar-circle,
+  .sidebar-portrait .portrait-metric,
+  .sidebar-portrait .p-tag {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .sidebar-portrait .info-row,
+  .sidebar-portrait .star-row {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+    border-top-color: var(--crm-dark-border-light) !important;
+  }
+  .sidebar-portrait .info-row .label,
+  .sidebar-portrait .metric-lbl,
+  .sidebar-portrait .radar-legend-item {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .sidebar-portrait .p-tag {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .sidebar-portrait .info-row .tag {
+    background-color: var(--crm-dark-raised) !important;
+  }
+
+  /* ---------- 75.14 公开帮助中心（根类为 .public-help-container） ---------- */
+  .public-help-container {
+    background-color: var(--crm-dark-base) !important;
+  }
+  .public-help-container .content-area,
+  .public-help-container .sidebar {
+    background-color: var(--crm-dark-card) !important;
+  }
+  .public-help-container .sidebar-header,
+  .public-help-container .search-header-bar {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+  .public-help-container .sidebar-header h3,
+  .public-help-container .search-header-bar h3,
+  .public-help-container .result-item h4 {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .public-help-container .result-item {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .public-help-container .result-item:hover {
+    background-color: var(--crm-dark-hover) !important;
+  }
+  .public-help-container .result-item p {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .public-help-container .result-category {
+    background-color: var(--crm-dark-border) !important;
+    color: var(--crm-dark-text-secondary) !important;
+  }
+
+  /* ---------- 75.15 驳回原因管理 ---------- */
+  .rejection-reason-management .add-reason-section {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .rejection-reason-management .add-reason-section h4 {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .rejection-reason-management .reason-name {
+    color: var(--crm-dark-text-primary) !important;
+  }
+  .rejection-reason-management .reason-description {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .rejection-reason-management .reason-meta {
+    color: var(--crm-dark-text-muted) !important;
+  }
+
+  /* ---------- 75.16 其他零散组件 ---------- */
+  .super-admin-panel .header-actions {
+    background-color: var(--crm-dark-card) !important;
+    box-shadow: none !important;
+  }
+  .health-check-notification-settings .label,
+  .health-check-notification-settings .info-list {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .health-check-notification-settings .tip {
+    color: var(--crm-dark-text-muted) !important;
+  }
+  .announcement-marquee .detail-meta {
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+  .announcement-marquee .detail-meta .time {
+    color: var(--crm-dark-text-muted) !important;
+  }
+  .announcement-marquee .detail-content {
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .performance-share-settings .form-item-tip,
+  .performance-share-settings .preview-tip {
+    color: var(--crm-dark-text-secondary) !important;
+  }
+  .performance-share-settings .preview-section h3 {
+    color: var(--crm-dark-text-primary) !important;
+  }
+}
+
+/* 内联深棕色提示文字（COD 审核提示） */
+html.dark [style*="color: #856404"],
+html.dark [style*="color:#856404"] {
+  color: #e6b800 !important;
 }
