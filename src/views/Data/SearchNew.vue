@@ -159,8 +159,8 @@
                   </div>
                 </div>
                 <div class="owner-status-badge">
-                  <el-tag :type="result.ownerName ? 'success' : 'info'" size="small">
-                    {{ result.ownerName ? '已分配' : '待分配' }}
+                  <el-tag :type="result.isAssigned ? 'success' : 'info'" size="small">
+                    {{ result.isAssigned ? '已分配' : '待分配' }}
                   </el-tag>
                 </div>
               </div>
@@ -256,6 +256,7 @@ const handleSearch = async () => {
           address: c.address || '',
           createTime: c.createdAt ? new Date(c.createdAt).toLocaleString('zh-CN', { hour12: false }) : '',
           orderCount: c.orderCount || 0,
+          isAssigned: Number(c.isDataAssigned) === 1 || c.isDataAssigned === true,
           ownerName: c.salesPersonInfo?.name || c.salesPersonName || '未分配',
           ownerDepartment: c.salesPersonInfo?.department || '',
           matchType: '订单号/物流单号'

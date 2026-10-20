@@ -627,7 +627,7 @@ router.get('/search-customer', async (req: Request, res: Response) => {
     // 构建主查询SQL
     let mainSql = `SELECT c.id, c.name, c.phone, c.other_phones, c.customer_code,
                           c.gender, c.age, c.level, c.address, c.created_at, c.order_count,
-                          c.sales_person_id
+                          c.sales_person_id, c.is_data_assigned
                    FROM customers c
                    WHERE 1=1 ${tenantCond}
                    AND (c.customer_code LIKE ? OR c.name LIKE ? OR c.phone LIKE ?
@@ -723,6 +723,8 @@ router.get('/search-customer', async (req: Request, res: Response) => {
         address: c.address || '',
         createTime: c.created_at,
         orderCount: orderCountMap[c.id] ?? (parseInt(c.order_count, 10) || 0),
+        // 分配状态与资料列表口径一致：以 customers.is_data_assigned 为准（1=已分配）
+        isAssigned: Number(c.is_data_assigned) === 1,
         ownerName: owner?.name || '未分配',
         ownerDepartment: owner?.department || '',
         matchType
