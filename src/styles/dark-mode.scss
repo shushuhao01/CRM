@@ -7823,3 +7823,310 @@ html.dark [style*="color: #856404"],
 html.dark [style*="color:#856404"] {
   color: #e6b800 !important;
 }
+
+/* ============================================================
+   76. 浅色提示块 / 信息块 / 浅底容器统一深色化
+   （scoped 里写死的浅底类，内联白名单覆盖不到）
+   ============================================================ */
+html.dark {
+  /* ---------- 76.1 订单设置（系统设置-订单配置） ---------- */
+  .drag-tip {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .email-preview-card {
+    background-color: var(--crm-dark-card) !important;
+    border-color: var(--crm-dark-border-light) !important;
+    box-shadow: none !important;
+  }
+  .email-preview-header {
+    background-color: var(--crm-dark-raised) !important;
+    border-bottom-color: var(--crm-dark-border-light) !important;
+  }
+  .email-preview-body {
+    background-color: var(--crm-dark-card) !important;
+  }
+  .email-preview-from {
+    color: var(--crm-dark-text-muted) !important;
+  }
+  .email-preview-subject {
+    color: var(--crm-dark-text-primary) !important;
+  }
+
+  /* ---------- 76.2 资料 / 客户 / 调试 ---------- */
+  .assign-info,
+  .address-content,
+  .search-suggestions,
+  .result-content,
+  .storage-info {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .owner-card {
+    background-color: var(--crm-dark-card) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+
+  /* ---------- 76.3 用户 / 部门 / 权限 ---------- */
+  .file-info,
+  .summary-item.valid,
+  .summary-item.invalid,
+  .permission-note,
+  .guide-footer,
+  .children-indicator,
+  .role-permissions,
+  .bottom-info,
+  .type-item,
+  .permission-templates,
+  .assigned-section,
+  .user-card.assigned,
+  .export-btn,
+  .compare-btn,
+  .batch-btn,
+  .test-buttons {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .mode-indicator--success,
+  .mode-indicator--warning,
+  .mode-indicator--info {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .info-grid {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+
+  /* ---------- 76.4 短信管理 ---------- */
+  .content-preview,
+  .realtime-item,
+  .reject-reason,
+  .quota-qr-section,
+  .doc-intro code {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .type-category-compact,
+  .methods-grid,
+  .time-range {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .channel-type-item:hover {
+    background-color: var(--crm-dark-hover) !important;
+  }
+
+  /* ---------- 76.5 接口 / SDK / 通话测试 ---------- */
+  .endpoint-code,
+  .doc-section pre,
+  .doc-section code,
+  .url-box code,
+  .user-test,
+  .test-details,
+  .method,
+  .troubleshooting .issue,
+  .sync-description {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .btn-secondary {
+    background-color: var(--crm-dark-raised) !important;
+    color: var(--crm-dark-text-regular) !important;
+  }
+
+  /* ---------- 76.6 帮助中心内容页 ---------- */
+  .upgrade-notice,
+  .contact-card,
+  .qr-wrapper,
+  .error-type,
+  .security-card,
+  .overview-item {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+
+  /* ---------- 76.7 客服 / 来电 / 错误页 ---------- */
+  .cs-qrcode-wrapper,
+  .cs-contact-item.cs-wechat,
+  .cs-contact-item.cs-phone:hover,
+  .cs-contact-item.cs-email:hover {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .var-tip-inline kbd {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .caller-avatar,
+  .caller-avatar.is-new {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .error-details pre {
+    background-color: var(--crm-dark-raised) !important;
+    color: var(--crm-dark-text-regular) !important;
+  }
+
+  /* ---------- 76.8 订单 / 商品选择 ---------- */
+  .stock-high,
+  .stock-medium,
+  .stock-low,
+  .stock-empty,
+  .quantity-display,
+  .table-product-code,
+  .cart-item-code,
+  .cart-item-subtotal,
+  .cod-amount-cell .returned-cod-tag {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .clear-cart:hover,
+  .cart-item-image,
+  .table-product-image {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .logistics-content-first {
+    background: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+
+  /* ---------- 76.9 业绩 / 财务 ---------- */
+  .stat-icon.shipped,
+  .stat-icon.delivered,
+  .stat-icon.processed,
+  .stats-card.blue .stats-card-icon,
+  .stats-card.green .stats-card-icon,
+  .stats-card.orange .stats-card-icon {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .detail-info-item,
+  .detail-description,
+  .member-item-horizontal,
+  .member-share-card,
+  .code-link {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .member-item-horizontal:hover,
+  .order-radio-item:hover {
+    background-color: var(--crm-dark-hover) !important;
+  }
+
+  /* ---------- 76.10 物流打印配置 ---------- */
+  .type-card.is-default-mode,
+  .status-card.status-connected,
+  .status-card.status-not-installed {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .company-code {
+    background-color: var(--crm-dark-raised) !important;
+    color: var(--crm-dark-text-regular) !important;
+  }
+  .notes-content {
+    background-color: var(--crm-dark-raised) !important;
+  }
+
+  /* ---------- 76.11 企微：统计卡 / 渠道 / 会话 ---------- */
+  .trend-chart,
+  .demo-messages,
+  .match-card,
+  .weight-section,
+  .weight-preview,
+  .summary-header,
+  .rule-detail,
+  .audit-preview,
+  .mark-msg-preview,
+  .event-detail-content,
+  .payload-pre,
+  .keyword-rule-item,
+  .bound-members-bar,
+  .auth-mode-card-sm.recommended {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .retention-matrix th,
+  .member-list-header,
+  .member-list-footer {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .rank-other,
+  .channel-track,
+  .dim-bar-bg,
+  .reason-bar-bg,
+  .status-bar-bg {
+    background-color: var(--crm-dark-border) !important;
+  }
+  .ret-green,
+  .warning-card.ok,
+  .stat-card-success,
+  .stat-card-warning,
+  .stat-card-danger,
+  .sidebar-stat-success,
+  .sidebar-stat-primary {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .tag-group-internal,
+  .tag-group-external,
+  .badge-staff,
+  .badge-external,
+  .conv-risk-badge,
+  .msg-bubble,
+  .tag-public,
+  .wecom-sdk-fallback .sdk-error-detail {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .member-card:hover,
+  .conv-card:hover,
+  .context-menu-item:hover,
+  .msg-context-menu .context-menu-item:hover {
+    background-color: var(--crm-dark-hover) !important;
+  }
+
+  /* ---------- 76.12 企微侧边栏 ---------- */
+  .phone-frame {
+    background-color: var(--crm-dark-card) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .phone-body,
+  .script-item,
+  .s-cat-panel,
+  .scripts-group-panel,
+  .mini-tag,
+  .p-tag.colored,
+  .s-att-icon.att-file {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .script {
+    background-color: var(--crm-dark-raised) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .s-search-item:hover,
+  .s-cat-item:hover,
+  .script-item:hover,
+  .s-ctx-item:hover,
+  .btn-refresh-inline:hover,
+  .tag-add-btn:hover,
+  .btn-refresh-svg:hover {
+    background-color: var(--crm-dark-hover) !important;
+  }
+  .btn-send-form-card:hover,
+  .verify-btn:hover,
+  .link-cust-item:hover {
+    background-color: var(--crm-dark-hover) !important;
+    border-color: var(--crm-dark-border-light) !important;
+  }
+  .mpc-hero,
+  .mpc-record-detail,
+  .qo-prod-img,
+  .login-error {
+    background-color: var(--crm-dark-raised) !important;
+  }
+  .scripts-tip {
+    color: var(--crm-dark-text-muted) !important;
+  }
+}
